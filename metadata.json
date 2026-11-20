@@ -1,0 +1,6 @@
+{
+  "name": "Notolovac",
+  "description": "Razigrana muzička sveska za decu koja sluša sviranje klavira, prepoznaje note uz C-kalibraciju i pretvara ih u notni zapis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

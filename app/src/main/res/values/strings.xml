@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">Notolovac</string>
+    <string name="tab_studio">Studio</string>
+    <string name="tab_notebook">Moja sveska</string>
+    <string name="action_listen_now">Slušaj sada</string>
+    <string name="action_stop_listening">Završi snimanje</string>
+    <string name="action_tune_c">Štimuj C</string>
+    <string name="action_play_melody">Pusti melodiju</string>
+    <string name="action_stop_playback">Zaustavi</string>
+    <string name="action_save_song">Sačuvaj u svesku</string>
+    <string name="action_share_image">Podeli sliku</string>
+    <string name="action_back">Nazad</string>
+    <string name="action_delete">Obriši</string>
+    <string name="label_mode_solfege">Do-Re-Mi</string>
+    <string name="label_mode_letters">C-D-E</string>
+    <string name="label_mode_clean">Čisto</string>
+    <string name="permission_mic_title">Potreban je mikrofon</string>
+    <string name="permission_mic_body">Notolovcu je potreban pristup mikrofonu da bi čuo tvoj klavir i nacrtao note. Zvuk ostaje samo na tvom uređaju.</string>
+    <string name="permission_mic_allow">Dozvoli mikrofon</string>
+    <string name="empty_notebook_title">Tvoja muzička sveska je još prazna!</string>
+    <string name="empty_notebook_body">Pritisni „Slušaj sada“, odsviraj svoju prvu melodiju na klaviru i sačuvaj je ovde.</string>
+    <string name="tune_dialog_title">Štimovanje na notu C (Do)</string>
+    <string name="tune_dialog_subtitle">Odsviraj srednje C (Do) na klaviru i zadrži ga 2 sekunde da Notolovac nauči tačnu visinu tvog instrumenta.</string>
+    <string name="tune_play_reference">Poslušaj primer C</string>
+    <string name="tune_start_listening">Slušaj moje C</string>
+    <string name="tune_reset_standard">Vrati na 440 Hz</string>
+    <string name="share_sheet_chooser">Podeli notni zapis</string>
+    <string name="default_song_title">Moja nova melodija</string>
+</resources>
