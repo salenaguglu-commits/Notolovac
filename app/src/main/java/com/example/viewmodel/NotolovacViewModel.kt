@@ -76,6 +76,8 @@ data class ActiveSheetState(
     val bpm: Int = 90,
     val beatsPerMeasure: Int = 4,
     val calibrationCentsUsed: Float = 0f,
+    val detectedKeyName: String? = null,
+    val harmonicallyRefinedCount: Int = 0,
     val selectedNoteIndex: Int? = null,
     val isPlaying: Boolean = false,
     val playingNoteIndex: Int? = null,
@@ -90,6 +92,7 @@ data class NotolovacUiState(
     val liveCentsOff: Float = 0f,
     val liveFrequencyHz: Double = 0.0,
     val rmsLevel: Float = 0f,
+    val isMicClipping: Boolean = false,
     val liveCapturedNotes: List<DetectedNote> = emptyList(),
     val keyboardPressedMidi: Int? = null,
     val keyboardStartOctave: Int = 4, // 3 (C3..B4) or 4 (C4..B5)
@@ -246,6 +249,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                 liveCentsOff = 0f,
                 liveFrequencyHz = 0.0,
                 rmsLevel = 0f,
+                isMicClipping = false,
                 liveCapturedNotes = emptyList(),
                 activeSheet = null
             )
@@ -268,6 +272,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     _uiState.update {
                         it.copy(
                             isRecording = false,
+                            isMicClipping = false,
                             snackbarMessage = err.message ?: "Greška pri pokretanju mikrofona."
                         )
                     }
@@ -281,6 +286,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                             liveCentsOff = update.liveCentsOff,
                             liveFrequencyHz = update.liveFrequencyHz,
                             rmsLevel = update.rmsLevel,
+                            isMicClipping = update.isClipping,
                             liveCapturedNotes = update.capturedNotes
                         )
                     }
@@ -306,6 +312,8 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
 
         val quantizedNotes = transcription?.notes.orEmpty()
         val effectiveBpm = transcription?.effectiveBpm ?: currentSettings.metronomeBpm
+        val detectedKeyName = transcription?.detectedKey?.serbianName
+        val refinedCount = transcription?.harmonicallyRefinedCount ?: 0
         val playableCount = quantizedNotes.count { !it.isRest }
         if (playableCount == 0) {
             _uiState.update {
@@ -313,6 +321,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     isRecording = false,
                     liveMidiNote = null,
                     rmsLevel = 0f,
+                    isMicClipping = false,
                     snackbarMessage = "Nisam uspeo da čujem note klavira. Pokušaj malo glasnije ili bliže klaviru!"
                 )
             }
@@ -325,6 +334,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                 isRecording = false,
                 liveMidiNote = null,
                 rmsLevel = 0f,
+                isMicClipping = false,
                 activeSheet = ActiveSheetState(
                     songId = 0L,
                     title = "Moja melodija #$nextNumber",
@@ -332,6 +342,8 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     bpm = effectiveBpm,
                     beatsPerMeasure = currentSettings.beatsPerMeasure,
                     calibrationCentsUsed = currentSettings.calibrationCents,
+                    detectedKeyName = detectedKeyName,
+                    harmonicallyRefinedCount = refinedCount,
                     isSaved = false
                 )
             )

@@ -244,6 +244,26 @@ fun StudioScreen(
                         labelMode = settings.noteLabelMode
                     )
 
+                    AnimatedVisibility(visible = uiState.isRecording && uiState.isMicClipping) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = HoneyGoldContainer,
+                            border = BorderStroke(1.dp, HoneyGoldTertiary),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 4.dp)
+                                .testTag("mic_clipping_hint")
+                        ) {
+                            Text(
+                                text = "Malo preglasno za mikrofon — odmakni telefon korak od klavira za još čistije note.",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = WarmInk,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
                     if (!uiState.isRecording && uiState.liveCapturedNotes.isEmpty()) {
                         Text(
                             text = "Pritisni „Slušaj sada“ i odsviraj melodiju na klaviru, ili isprobaj dirke ispod!",

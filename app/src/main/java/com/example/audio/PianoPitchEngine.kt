@@ -8,6 +8,7 @@ import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tan
 
 data class SpectralPitchFrame(
     val midiNote: Int?,           // Best full-spectrum piano MIDI note (C3..C6) or null
@@ -16,10 +17,12 @@ data class SpectralPitchFrame(
     val frequencyHz: Double,      // Parabolic-refined fundamental frequency in Hz
     val centsOff: Float,          // Deviation from calibrated target pitch in cents
     val confidence: Float,        // 0..1 harmonic clarity / SNR confidence
-    val rms: Float,               // Time-domain RMS amplitude
+    val rms: Float,               // Time-domain RMS amplitude (after 105 Hz high-pass thump filter)
     val onsetStrength: Float,     // Positive spectral flux
     val isOnset: Boolean,         // True when a genuine piano hammer attack occurred
     val activeNoteEnergy: Float,  // Harmonic energy of winning full-spectrum note
+    val clippingRatio: Float = 0f,// Fraction of samples near full-scale mic saturation (close-up overload)
+    val topCandidates: List<PitchCandidate> = emptyList(),
     private val keyEnergies: FloatArray = FloatArray(0),
     private val keyDeltaRatios: FloatArray = FloatArray(0)
 ) {
@@ -80,6 +83,13 @@ class PianoPitchEngine(
     private var hasPrevSpectrum = false
     private var prevRms = 0f
 
+    // 2nd-order Butterworth 105 Hz high-pass filter coefficients (removes soundboard/keybed thump < C3)
+    private val hpfB0: Double
+    private val hpfB1: Double
+    private val hpfB2: Double
+    private val hpfA1: Double
+    private val hpfA2: Double
+
     init {
         val logN = (ln(fftSize.toDouble()) / ln(2.0)).toInt()
         for (i in 0 until fftSize) {
@@ -96,6 +106,14 @@ class PianoPitchEngine(
             cosTable[i] = cos(angle)
             sinTable[i] = sin(angle)
         }
+
+        val k = tan(PI * 105.0 / sampleRate.toDouble())
+        val norm = 1.0 / (1.0 + sqrt(2.0) * k + k * k)
+        hpfB0 = norm
+        hpfB1 = -2.0 * norm
+        hpfB2 = norm
+        hpfA1 = 2.0 * (k * k - 1.0) * norm
+        hpfA2 = (1.0 - sqrt(2.0) * k + k * k) * norm
     }
 
     fun setCalibrationCents(cents: Float) {
@@ -114,18 +132,32 @@ class PianoPitchEngine(
         val n = minOf(count, windowSize, pcmSamples.size)
         if (n < 1024) return emptyFrame(0f)
 
-        // 1. DC-removed RMS + Hann window into zero-padded FFT buffer
+        // 1. Measure raw mic clipping + DC-removed 105 Hz high-pass filter + Hann window
         var mean = 0.0
+        var clippedCount = 0
         for (i in 0 until n) {
-            mean += pcmSamples[i] / 32768.0
+            val raw = pcmSamples[i].toInt()
+            if (abs(raw) >= 29500) clippedCount++
+            mean += raw / 32768.0
         }
         mean /= n
+        val clippingRatio = clippedCount.toFloat() / n.toFloat()
+
+        // 2nd-order 105 Hz Butterworth HPF removes close-up soundboard/pedal thud without touching C3..C6
+        var x1 = (pcmSamples[0] / 32768.0) - mean
+        var x2 = x1
+        var y1 = 0.0
+        var y2 = 0.0
 
         var sumSq = 0.0
         for (i in 0 until n) {
-            val s = (pcmSamples[i] / 32768.0) - mean
-            sumSq += s * s
-            fftReal[i] = s * hannWindow[i]
+            val x0 = (pcmSamples[i] / 32768.0) - mean
+            val y0 = hpfB0 * x0 + hpfB1 * x1 + hpfB2 * x2 - hpfA1 * y1 - hpfA2 * y2
+            x2 = x1; x1 = x0
+            y2 = y1; y1 = y0
+
+            sumSq += y0 * y0
+            fftReal[i] = y0 * hannWindow[i]
             fftImag[i] = 0.0
         }
         for (i in n until fftSize) {
@@ -203,6 +235,7 @@ class PianoPitchEngine(
         // 5. Score Full Spectrum (`mag`) and record per-key harmonic energies (C3..C6)
         val keyEnergies = FloatArray(numCandidates)
         val keyDeltaRatios = FloatArray(numCandidates)
+        val isClipped = clippingRatio >= 0.015f
 
         val fullResult = scoreSpectrum(
             spectrum = mag,
@@ -210,6 +243,7 @@ class PianoPitchEngine(
             maxPeak = maxPeakMag,
             minBin = minBin,
             maxBin = maxBin,
+            isClipped = isClipped,
             outKeyEnergies = keyEnergies
         )
 
@@ -222,13 +256,14 @@ class PianoPitchEngine(
                 maxPeak = maxDeltaMag,
                 minBin = minBin,
                 maxBin = maxBin,
+                isClipped = isClipped,
                 outKeyEnergies = deltaKeyEnergies
             )
         } else if (!hasPrevSpectrum && rms > 0.005f) {
             System.arraycopy(keyEnergies, 0, deltaKeyEnergies, 0, numCandidates)
             fullResult
         } else {
-            ScoreResult(null, 0f, 0f)
+            ScoreResult(null, 0f, 0f, emptyList())
         }
 
         for (i in 0 until numCandidates) {
@@ -257,17 +292,23 @@ class PianoPitchEngine(
             0f
         }
 
+        // Gently temper confidence during clipping (never dropping strong strikes below the onset gate!),
+        // while exposing exact clippingRatio so tracker & MusicalHarmonyResolver refine clipped attacks.
+        val clipConfidenceFactor = (1f - clippingRatio * 0.65f).coerceIn(0.65f, 1f)
+
         return SpectralPitchFrame(
             midiNote = winningMidi,
             onsetMidiNote = onsetResult.midi,
-            onsetConfidence = onsetResult.confidence,
+            onsetConfidence = onsetResult.confidence * clipConfidenceFactor,
             frequencyHz = refinedHz,
             centsOff = centsOff,
-            confidence = fullResult.confidence,
+            confidence = fullResult.confidence * clipConfidenceFactor,
             rms = rms,
             onsetStrength = rawFlux,
             isOnset = isOnset,
             activeNoteEnergy = winEnergy,
+            clippingRatio = clippingRatio,
+            topCandidates = fullResult.topCandidates,
             keyEnergies = keyEnergies,
             keyDeltaRatios = keyDeltaRatios
         )
@@ -276,7 +317,8 @@ class PianoPitchEngine(
     private data class ScoreResult(
         val midi: Int?,
         val score: Float,
-        val confidence: Float
+        val confidence: Float,
+        val topCandidates: List<PitchCandidate>
     )
 
     private fun scoreSpectrum(
@@ -285,16 +327,24 @@ class PianoPitchEngine(
         maxPeak: Float,
         minBin: Int,
         maxBin: Int,
+        isClipped: Boolean,
         outKeyEnergies: FloatArray?
     ): ScoreResult {
-        if (maxPeak < 0.25f) return ScoreResult(null, 0f, 0f)
+        if (maxPeak < 0.25f) return ScoreResult(null, 0f, 0f, emptyList())
 
-        val harmonicWeights = floatArrayOf(1.15f, 0.78f, 0.56f, 0.34f, 0.20f)
+        // During hard mic clipping, odd/high distortion products (3f, 5f, IMD) spike artificially;
+        // down-weight h4 & h5 and rely more heavily on fundamental + 2nd harmonic!
+        val harmonicWeights = if (isClipped) {
+            floatArrayOf(1.32f, 0.86f, 0.42f, 0.16f, 0.08f)
+        } else {
+            floatArrayOf(1.15f, 0.78f, 0.56f, 0.34f, 0.20f)
+        }
         val inharmonicityB = 0.00012
 
         var bestMidi: Int? = null
         var bestScore = 0f
         var secondBestScore = 0f
+        val scoredList = ArrayList<PitchCandidate>(8)
 
         for (idx in 0 until numCandidates) {
             val midi = minMidi + idx
@@ -367,6 +417,10 @@ class PianoPitchEngine(
                 totalScore *= 0.50f
             }
 
+            if (totalScore >= 0.85f) {
+                scoredList.add(PitchCandidate(midi, totalScore))
+            }
+
             if (totalScore > bestScore) {
                 secondBestScore = bestScore
                 bestScore = totalScore
@@ -377,14 +431,15 @@ class PianoPitchEngine(
         }
 
         if (bestMidi == null || bestScore < 1.35f) {
-            return ScoreResult(null, 0f, 0f)
+            return ScoreResult(null, 0f, 0f, emptyList())
         }
 
         val margin = ((bestScore - secondBestScore) / bestScore).coerceIn(0f, 1f)
         val strength = (bestScore / 4.2f).coerceIn(0f, 1f)
         val confidence = (0.55f * strength + 0.45f * max(margin, 0.25f)).coerceIn(0f, 1f)
+        val top5 = scoredList.sortedByDescending { it.score }.take(5)
 
-        return ScoreResult(bestMidi, bestScore, confidence)
+        return ScoreResult(bestMidi, bestScore, confidence, top5)
     }
 
     private fun refineFundamentalHz(midi: Int, minBin: Int, maxBin: Int): Double {

@@ -22,13 +22,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -173,13 +173,14 @@ fun SheetResultScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 val noteCount = sheet.notes.count { !it.isRest }
+                val keyPart = sheet.detectedKeyName?.let { " • $it" } ?: ""
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = WarmSurface,
                     border = BorderStroke(1.dp, WarmCardBorder)
                 ) {
                     Text(
-                        text = "$noteCount nota • ${sheet.bpm} BPM • ${sheet.beatsPerMeasure}/4",
+                        text = "$noteCount nota • ${sheet.bpm} BPM • ${sheet.beatsPerMeasure}/4$keyPart",
                         style = MaterialTheme.typography.labelSmall,
                         color = MutedInk,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -209,6 +210,21 @@ fun SheetResultScreen(
                         selectedNoteIndex = sheet.selectedNoteIndex,
                         onNoteTapped = onNoteTapped
                     )
+                    if (sheet.detectedKeyName != null && sheet.harmonicallyRefinedCount > 0) {
+                        val n = sheet.harmonicallyRefinedCount
+                        val noteWord = when {
+                            n == 1 -> "nesigurna nota"
+                            n in 2..4 -> "nesigurne note"
+                            else -> "nesigurnih nota"
+                        }
+                        Text(
+                            text = "Pametna harmonija (${sheet.detectedKeyName}): automatski usklađeno $n $noteWord po lestvici.",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SageMintSecondary,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                        )
+                    }
                     Text(
                         text = "Savet: Dodirni bilo koju notu da je čuješ ili ukloniš ako je slučajan zvuk.",
                         style = MaterialTheme.typography.bodySmall,
@@ -219,7 +235,7 @@ fun SheetResultScreen(
             }
 
             // 4. Contextual Selected Note Inspector Bar (Audition or Remove stray note)
-            AnimatedVisibility(visible = selectedNote != null && sheet.selectedNoteIndex != null) {
+            AnimatedVisibility(visible = selectedNote != null) {
                 val selIdx = sheet.selectedNoteIndex ?: return@AnimatedVisibility
                 val sel = selectedNote ?: return@AnimatedVisibility
                 Surface(
@@ -259,7 +275,7 @@ fun SheetResultScreen(
                                     modifier = Modifier.testTag("preview_selected_note_button")
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.VolumeUp,
+                                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                                         contentDescription = "Poslušaj notu",
                                         tint = SageMintSecondary
                                     )

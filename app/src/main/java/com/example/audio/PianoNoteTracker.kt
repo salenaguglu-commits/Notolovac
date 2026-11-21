@@ -11,12 +11,15 @@ data class TrackerUpdate(
     val liveCentsOff: Float,
     val liveFrequencyHz: Double,
     val rmsLevel: Float,
+    val isClipping: Boolean = false,
     val capturedNotes: List<DetectedNote>
 )
 
 data class QuantizedTranscription(
     val notes: List<DetectedNote>,
-    val effectiveBpm: Int
+    val effectiveBpm: Int,
+    val detectedKey: DetectedMusicalKey? = null,
+    val harmonicallyRefinedCount: Int = 0
 )
 
 /**
@@ -35,6 +38,7 @@ data class QuantizedTranscription(
  */
 class PianoNoteTracker {
     private val finalizedNotes = mutableListOf<DetectedNote>()
+    private val finalizedEvidences = mutableListOf<NoteAcousticEvidence>()
     private var nextNoteId = 1L
 
     // Currently locked active piano note
@@ -44,11 +48,16 @@ class PianoNoteTracker {
     private var activeStartMs: Long = 0L
     private var activeLastSeenMs: Long = 0L
     private var activeConfidenceSum: Float = 0f
+    private var activePeakConfidence: Float = 0f
+    private var activeMaxClippingRatio: Float = 0f
+    private var activeStartedClipped: Boolean = false
     private var activeFrameCount: Int = 0
     private var activePeakEnergy: Float = 0f
     private var activePeakRms: Float = 0f
     private var activePrevEnergy: Float = 0f
     private var lowEnergyFrames: Int = 0
+    private val activeCandidateScores = mutableMapOf<Int, Float>()
+    private var recentClippingFrames: Int = 0
 
     // Pending attack confirmation (2 consecutive frames right after strike to skip raw hammer thump)
     private var pendingAttackMidi: Int? = null
@@ -73,16 +82,22 @@ class PianoNoteTracker {
 
     fun reset() {
         finalizedNotes.clear()
+        finalizedEvidences.clear()
         nextNoteId = 1L
         activeMidi = null
         activeStartMs = 0L
         activeLastSeenMs = 0L
         activeConfidenceSum = 0f
+        activePeakConfidence = 0f
+        activeMaxClippingRatio = 0f
+        activeStartedClipped = false
         activeFrameCount = 0
         activePeakEnergy = 0f
         activePeakRms = 0f
         activePrevEnergy = 0f
         lowEnergyFrames = 0
+        activeCandidateScores.clear()
+        recentClippingFrames = 0
         pendingAttackMidi = null
         pendingAttackStartMs = 0L
         pendingAttackCount = 0
@@ -95,6 +110,11 @@ class PianoNoteTracker {
 
     fun processFrame(frame: SpectralPitchFrame, timestampMs: Long): TrackerUpdate {
         val rms = frame.rms
+        if (frame.clippingRatio >= 0.025f) {
+            recentClippingFrames = (recentClippingFrames + 1).coerceAtMost(20)
+        } else if (recentClippingFrames > 0) {
+            recentClippingFrames--
+        }
 
         // Adapt ambient noise floor during quiet non-pitched moments
         if (rms < 0.010f && frame.midiNote == null && activeMidi == null) {
@@ -134,7 +154,8 @@ class PianoNoteTracker {
                         timestampMs = pendingAttackStartMs,
                         confidence = max(frame.confidence, frame.onsetConfidence),
                         energy = startEnergy,
-                        rms = rms
+                        rms = rms,
+                        frame = frame
                     )
                     clearPendingAttack()
                 }
@@ -204,7 +225,8 @@ class PianoNoteTracker {
                         timestampMs = pendingAttackStartMs,
                         confidence = frame.onsetConfidence,
                         energy = max(frame.energyForMidi(targetMidi), 1.0f),
-                        rms = rms
+                        rms = rms,
+                        frame = frame
                     )
                     clearPendingAttack()
                 }
@@ -216,32 +238,62 @@ class PianoNoteTracker {
                     timestampMs = timestampMs,
                     confidence = max(frame.confidence, 0.7f),
                     energy = max(lockedEnergy, 1.0f),
-                    rms = rms
+                    rms = rms,
+                    frame = frame
                 )
             } else {
                 clearPendingAttack()
 
+                // Accumulate multi-frame acoustic candidate evidence for MusicalHarmonyResolver
+                recordFrameCandidates(frame)
+
+                // Post-impact pitch refinement (55ms..150ms ONLY):
+                // If the phone was very close to a loud piano and the hammer attack clipped or was
+                // ambiguous, allow ONE clean unclipped upgrade once the distortion subsides —
+                // while keeping >150ms fade/vibrato 100% locked against octave-down ghosts!
+                val currentActive = activeMidi ?: current
+                if (
+                    timeSinceStart in 55L..150L &&
+                    (activeStartedClipped || activePeakConfidence < 0.62f) &&
+                    frame.clippingRatio < 0.01f &&
+                    frame.confidence >= 0.64f
+                ) {
+                    val cleanMidi = frame.midiNote
+                    if (cleanMidi != null && cleanMidi != currentActive && cleanMidi != currentActive - 12) {
+                        val cleanScore = activeCandidateScores[cleanMidi] ?: 0f
+                        val curScore = activeCandidateScores[currentActive] ?: 0f
+                        if (cleanScore > curScore * 1.25f) {
+                            activeMidi = cleanMidi
+                            activeStartedClipped = false
+                            activePeakEnergy = max(activePeakEnergy, frame.energyForMidi(cleanMidi))
+                        }
+                    }
+                }
+
+                val trackedMidi = activeMidi ?: current
+                val trackedEnergy = frame.energyForMidi(trackedMidi)
+
                 // 2. Track whether the locked note is still ringing OR has been damped / faded out
                 // Note: We NEVER switch pitch here during fade or vibrato! We only decide keep vs release.
                 val sharpDamperDrop = activePrevEnergy > 1.2f &&
-                    lockedEnergy < activePrevEnergy * 0.30f &&
-                    lockedEnergy < activePeakEnergy * 0.14f &&
+                    trackedEnergy < activePrevEnergy * 0.30f &&
+                    trackedEnergy < activePeakEnergy * 0.14f &&
                     timeSinceStart > 140L
 
                 // Do NOT prematurely release a held note while its RMS is still clearly above ambient
                 // and its locked harmonics are still ringing (prevents unison beating troughs from splitting a held note!)
                 val fadedOut = rms < releaseRmsGate ||
-                    (lockedEnergy < 0.28f && rms < attackRmsGate * 1.15f) ||
-                    (activePeakEnergy > 1.0f && lockedEnergy < activePeakEnergy * 0.025f && rms < attackRmsGate * 1.25f)
+                    (trackedEnergy < 0.28f && rms < attackRmsGate * 1.15f) ||
+                    (activePeakEnergy > 1.0f && trackedEnergy < activePeakEnergy * 0.025f && rms < attackRmsGate * 1.25f)
 
                 if (sharpDamperDrop) {
-                    lastReleasedMidi = current
+                    lastReleasedMidi = trackedMidi
                     commitActiveNote(timestampMs)
                     postReleaseDecayGuardMs = timestampMs + 320L
                 } else if (fadedOut) {
                     lowEnergyFrames++
                     if (lowEnergyFrames >= releaseFramesRequired) {
-                        lastReleasedMidi = current
+                        lastReleasedMidi = trackedMidi
                         commitActiveNote(activeLastSeenMs)
                         postReleaseDecayGuardMs = timestampMs + 420L
                     }
@@ -249,9 +301,11 @@ class PianoNoteTracker {
                     lowEnergyFrames = 0
                     activeLastSeenMs = timestampMs
                     activeConfidenceSum += max(frame.confidence, 0.5f)
+                    if (frame.confidence > activePeakConfidence) activePeakConfidence = frame.confidence
+                    if (frame.clippingRatio > activeMaxClippingRatio) activeMaxClippingRatio = frame.clippingRatio
                     activeFrameCount++
                 }
-                activePrevEnergy = lockedEnergy
+                activePrevEnergy = trackedEnergy
             }
         }
 
@@ -262,6 +316,7 @@ class PianoNoteTracker {
             liveCentsOff = if (activeMidi != null) frame.centsOff else 0f,
             liveFrequencyHz = if (activeMidi != null) frame.frequencyHz else 0.0,
             rmsLevel = rms,
+            isClipping = recentClippingFrames >= 3,
             capturedNotes = finalizedNotes.toList()
         )
     }
@@ -296,10 +351,16 @@ class PianoNoteTracker {
         if (activeMidi != null) {
             commitActiveNote(maxOf(activeLastSeenMs, endTimestampMs))
         }
-        return quantizeNotes(
-            rawNotes = finalizedNotes,
+        // Apply smart solfege/key & Viterbi melodic continuity resolution on uncertain/clipped notes
+        val harmonyResult = MusicalHarmonyResolver.resolve(finalizedEvidences)
+        val quantized = quantizeNotes(
+            rawNotes = harmonyResult.resolvedNotes,
             fallbackBpm = metronomeBpm,
             lockToMetronomeBpm = metronomeWasActive
+        )
+        return quantized.copy(
+            detectedKey = harmonyResult.detectedKey,
+            harmonicallyRefinedCount = harmonyResult.correctedCount
         )
     }
 
@@ -308,18 +369,35 @@ class PianoNoteTracker {
         timestampMs: Long,
         confidence: Float,
         energy: Float,
-        rms: Float
+        rms: Float,
+        frame: SpectralPitchFrame
     ) {
         activeMidi = midi
         activeStartMs = timestampMs
         activeLastSeenMs = timestampMs
         activeConfidenceSum = confidence
+        activePeakConfidence = confidence
+        activeMaxClippingRatio = frame.clippingRatio
+        activeStartedClipped = frame.clippingRatio >= 0.015f
         activeFrameCount = 1
         activePeakEnergy = energy
         activePeakRms = rms
         activePrevEnergy = energy
         lowEnergyFrames = 0
         lastNoteStartMs = timestampMs
+        activeCandidateScores.clear()
+        activeCandidateScores[midi] = max(confidence, 0.5f)
+        recordFrameCandidates(frame)
+    }
+
+    private fun recordFrameCandidates(frame: SpectralPitchFrame) {
+        // Weight clean unclipped frames much higher than clipped/distorted frames
+        val clipWeight = (1f - frame.clippingRatio * 3.0f).coerceIn(0.20f, 1.0f)
+        val frameWeight = frame.confidence.coerceIn(0.2f, 1.0f) * clipWeight
+        for (cand in frame.topCandidates) {
+            val prev = activeCandidateScores[cand.midi] ?: 0f
+            activeCandidateScores[cand.midi] = prev + cand.score * frameWeight
+        }
     }
 
     private fun commitActiveNote(endMs: Long) {
@@ -327,25 +405,36 @@ class PianoNoteTracker {
         val duration = (endMs - activeStartMs).coerceAtLeast(0L)
         if (duration >= minNoteDurationMs && activeFrameCount >= 2) {
             val avgConf = (activeConfidenceSum / activeFrameCount).coerceIn(0f, 1f)
-            finalizedNotes.add(
-                DetectedNote(
-                    id = nextNoteId++,
-                    midiNote = midi,
-                    startTimeMs = activeStartMs,
-                    durationMs = duration,
-                    beats = 1.0f,
-                    confidence = avgConf,
-                    isRest = false
+            val note = DetectedNote(
+                id = nextNoteId++,
+                midiNote = midi,
+                startTimeMs = activeStartMs,
+                durationMs = duration,
+                beats = 1.0f,
+                confidence = avgConf,
+                isRest = false
+            )
+            finalizedNotes.add(note)
+            finalizedEvidences.add(
+                NoteAcousticEvidence(
+                    rawNote = note,
+                    candidateScores = activeCandidateScores.toMap(),
+                    peakConfidence = activePeakConfidence,
+                    maxClippingRatio = activeMaxClippingRatio
                 )
             )
         }
         activeMidi = null
         activeFrameCount = 0
         activeConfidenceSum = 0f
+        activePeakConfidence = 0f
+        activeMaxClippingRatio = 0f
+        activeStartedClipped = false
         activePeakEnergy = 0f
         activePeakRms = 0f
         activePrevEnergy = 0f
         lowEnergyFrames = 0
+        activeCandidateScores.clear()
     }
 
     companion object {
