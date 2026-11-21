@@ -447,6 +447,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                 )
                                 val roundedCents = medianCents.roundToInt()
                                 val sign = if (roundedCents > 0) "+" else ""
+                                val hzText = String.format(java.util.Locale.US, "%.1f Hz", calibratedC4)
                                 _uiState.update {
                                     it.copy(
                                         tuneDialog = it.tuneDialog.copy(
@@ -455,9 +456,9 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                             liveCents = medianCents,
                                             progress = 1f,
                                             completed = true,
-                                            statusMessage = "Bravo! Klavir je naštimovan ($sign$roundedCents centi)."
+                                            statusMessage = "Notolovac se prilagodio tvom klaviru! Tvoje C4 = $hzText ($sign$roundedCents ct) — sve note se sada računaju po ovom štimu."
                                         ),
-                                        snackbarMessage = "Klavir je uspešno naštimovan na tvoje C!"
+                                        snackbarMessage = "Notolovac sada sluša po štimu tvog klavira ($sign$roundedCents ct)!"
                                     )
                                 }
                                 calibrationJob?.cancel()

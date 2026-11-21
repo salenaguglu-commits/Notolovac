@@ -6,27 +6,45 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.ln
 import kotlin.math.max
-import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 data class SpectralPitchFrame(
-    val midiNote: Int?,           // Winning piano MIDI note (45..84) or null if unpitched/silent
+    val midiNote: Int?,           // Best full-spectrum piano MIDI note (C3..C6) or null
+    val onsetMidiNote: Int?,      // Best NEWLY STRUCK piano MIDI note from positive delta-spectrum
+    val onsetConfidence: Float,   // Confidence of onsetMidiNote (0..1)
     val frequencyHz: Double,      // Parabolic-refined fundamental frequency in Hz
     val centsOff: Float,          // Deviation from calibrated target pitch in cents
     val confidence: Float,        // 0..1 harmonic clarity / SNR confidence
     val rms: Float,               // Time-domain RMS amplitude
-    val onsetStrength: Float,     // Positive spectral flux (spikes sharply on new piano hammer strike)
-    val isOnset: Boolean,         // True when spectral flux crosses adaptive onset threshold
-    val activeNoteEnergy: Float   // Harmonic energy of the detected note (tracks damper release cleanly)
-)
+    val onsetStrength: Float,     // Positive spectral flux
+    val isOnset: Boolean,         // True when a genuine piano hammer attack occurred
+    val activeNoteEnergy: Float,  // Harmonic energy of winning full-spectrum note
+    private val keyEnergies: FloatArray = FloatArray(0),
+    private val keyDeltaRatios: FloatArray = FloatArray(0)
+) {
+    fun energyForMidi(midi: Int): Float {
+        val idx = midi - MusicTheory.MIN_PIANO_MIDI
+        return if (idx in keyEnergies.indices) keyEnergies[idx] else 0f
+    }
+
+    fun deltaRatioForMidi(midi: Int): Float {
+        val idx = midi - MusicTheory.MIN_PIANO_MIDI
+        return if (idx in keyDeltaRatios.indices) keyDeltaRatios[idx] else 0f
+    }
+}
 
 /**
- * High-accuracy Piano Pitch & Onset Detection Engine based on:
- * - 4096-sample Hann-windowed, 8192-point zero-padded Radix-2 FFT (5.38 Hz bin resolution, <0.5 Hz interpolated)
- * - Positive Spectral Flux onset detection (isolates newly struck piano hammers even over ringing room tails)
- * - Delta-Spectrum + Full-Spectrum Piano Harmonic Comb scoring (harmonics h = 1..5 with inharmonicity)
- * - Strict Fundamental Presence & Odd-Harmonic Anti-Octave / Anti-Fifth suppression
+ * High-accuracy Piano Pitch & Onset Detection Engine designed specifically for real room acoustics:
+ * - 4096-sample Hann-windowed, 8192-point zero-padded Radix-2 FFT (~5.38 Hz bins, <0.5 Hz parabolic)
+ * - Strict Fundamental-Presence & Odd-Harmonic Sub-Octave Rejection (eliminates octave-down ghost notes
+ *   during fade/decay and room bass rumble!)
+ * - Dual-Spectrum Scoring:
+ *   1) Full spectrum (`mag`) for clean single-note pitch identification and C-calibration
+ *   2) Positive Delta-Spectrum (`deltaMag`) for isolating newly struck legato or repeated piano keys
+ *      even while the previous key is still ringing in the room!
+ * - Thread-safe per-key energy snapshot (`keyEnergies` / `keyDeltaRatios`) for all C3..C6 keys so
+ *   PianoNoteTracker can lock onto the peak pitch without any cross-thread callback lag.
  */
 class PianoPitchEngine(
     private val sampleRate: Int = 44100,
@@ -47,23 +65,19 @@ class PianoPitchEngine(
     private val prevMag = FloatArray(halfFft)
     private val deltaMag = FloatArray(halfFft)
 
-    // Precomputed bit-reversal & twiddle tables for fast zero-allocation Radix-2 FFT
     private val bitRev = IntArray(fftSize)
     private val cosTable = DoubleArray(halfFft)
     private val sinTable = DoubleArray(halfFft)
 
-    // MIDI evaluation range: A2 (45) .. C6 (84)
-    private val minMidi = 45
-    private val maxMidi = 84
+    // Piano melody range: C3 (48, 130.8 Hz) .. C6 (84, 1046.5 Hz)
+    private val minMidi = MusicTheory.MIN_PIANO_MIDI // 48 (C3)
+    private val maxMidi = MusicTheory.MAX_PIANO_MIDI // 84 (C6)
     private val numCandidates = maxMidi - minMidi + 1
-    private val candidateScores = FloatArray(numCandidates)
-    private val candidateFundEnergies = FloatArray(numCandidates)
 
-    // Adaptive spectral flux history for onset detection
-    private val fluxHistory = FloatArray(10)
+    private val fluxHistory = FloatArray(12)
     private var fluxIndex = 0
     private var hasPrevSpectrum = false
-    private var lastWinningMidi: Int? = null
+    private var prevRms = 0f
 
     init {
         val logN = (ln(fftSize.toDouble()) / ln(2.0)).toInt()
@@ -92,16 +106,14 @@ class PianoPitchEngine(
         fluxHistory.fill(0f)
         fluxIndex = 0
         hasPrevSpectrum = false
-        lastWinningMidi = null
+        prevRms = 0f
     }
 
     fun analyze(pcmSamples: ShortArray, count: Int = windowSize): SpectralPitchFrame {
         val n = minOf(count, windowSize, pcmSamples.size)
-        if (n < 1024) {
-            return emptyFrame(0f)
-        }
+        if (n < 1024) return emptyFrame(0f)
 
-        // 1. Compute DC-removed RMS and apply Hann window into zero-padded FFT buffer
+        // 1. DC-removed RMS + Hann window into zero-padded FFT buffer
         var mean = 0.0
         for (i in 0 until n) {
             mean += pcmSamples[i] / 32768.0
@@ -121,24 +133,26 @@ class PianoPitchEngine(
         }
         val rms = sqrt(sumSq / n).toFloat()
 
-        // Early exit for dead silence
         if (rms < 0.0015f) {
             if (hasPrevSpectrum) {
-                for (k in 0 until halfFft) prevMag[k] *= 0.7f
+                for (k in 0 until halfFft) prevMag[k] *= 0.65f
             }
-            lastWinningMidi = null
+            prevRms = rms
             return emptyFrame(rms)
         }
 
         // 2. Run 8192-point in-place Radix-2 FFT
         computeFft()
 
-        // 3. Compute Magnitude Spectrum (focus on piano musical band 80 Hz .. 4800 Hz)
-        val minBin = max(2, (80.0 / binHz).toInt())
+        // 3. Compute magnitude spectrum & positive spectral flux (115 Hz .. 4800 Hz)
+        val minBin = max(2, (115.0 / binHz).toInt())
         val maxBin = minOf(halfFft - 2, (4800.0 / binHz).toInt())
 
         var rawFlux = 0f
         var magSum = 0f
+        var maxPeakMag = 0.0001f
+        var maxDeltaMag = 0.0001f
+        var deltaSum = 0f
         var magCount = 0
 
         for (k in minBin..maxBin) {
@@ -147,54 +161,137 @@ class PianoPitchEngine(
             val m = sqrt(re * re + im * im).toFloat()
             mag[k] = m
             magSum += m
+            if (m > maxPeakMag) maxPeakMag = m
             magCount++
 
             if (hasPrevSpectrum) {
-                val diff = m - prevMag[k] * 0.85f
+                val diff = m - prevMag[k] * 0.92f
                 if (diff > 0f) {
                     deltaMag[k] = diff
-                    // Log-compressed spectral flux reacts strongly to new hammer strikes even at moderate volume
-                    rawFlux += ln(1f + diff * 4f)
+                    deltaSum += diff
+                    if (diff > maxDeltaMag) maxDeltaMag = diff
+                    rawFlux += ln(1f + diff * 3.5f)
                 } else {
                     deltaMag[k] = 0f
                 }
             } else {
                 deltaMag[k] = m
+                deltaSum += m
+                if (m > maxDeltaMag) maxDeltaMag = m
             }
         }
 
-        val meanSpectralFloor = if (magCount > 0) magSum / magCount else 0.0001f
+        val meanFloor = if (magCount > 0) magSum / magCount else 0.0001f
+        val meanDeltaFloor = if (magCount > 0) deltaSum / magCount else 0.0001f
 
-        // 4. Adaptive Onset Detection from Spectral Flux
+        // 4. Adaptive Onset Detection
         var avgFlux = 0f
         for (v in fluxHistory) avgFlux += v
         avgFlux /= fluxHistory.size
 
-        val isOnset = hasPrevSpectrum &&
-            rawFlux > max(12f, avgFlux * 2.15f + 6f) &&
-            rms > 0.0045f
+        val rmsJump = prevRms > 0.0005f && rms > prevRms * 1.38f && rms > 0.0055f
+        val fluxSpike = hasPrevSpectrum &&
+            rawFlux > max(14f, avgFlux * 2.25f + 7f) &&
+            rms > 0.005f
+        val isOnset = fluxSpike || rmsJump
 
         fluxHistory[fluxIndex] = rawFlux
         fluxIndex = (fluxIndex + 1) % fluxHistory.size
+        prevRms = rms
 
-        // 5. Score every piano key (A2..C6) using Weighted Harmonic Comb
-        // On onset frames, blend 65% deltaMag + 35% full mag to cancel out previous ringing room notes!
-        val useDeltaBlend = isOnset && hasPrevSpectrum
-        val spectralSource = if (useDeltaBlend) {
-            FloatArray(maxBin + 1).also { blended ->
-                for (k in minBin..maxBin) {
-                    blended[k] = deltaMag[k] * 0.65f + mag[k] * 0.35f
-                }
-            }
+        // 5. Score Full Spectrum (`mag`) and record per-key harmonic energies (C3..C6)
+        val keyEnergies = FloatArray(numCandidates)
+        val keyDeltaRatios = FloatArray(numCandidates)
+
+        val fullResult = scoreSpectrum(
+            spectrum = mag,
+            meanFloor = meanFloor,
+            maxPeak = maxPeakMag,
+            minBin = minBin,
+            maxBin = maxBin,
+            outKeyEnergies = keyEnergies
+        )
+
+        // 6. Score Positive Delta-Spectrum (`deltaMag`) to isolate NEWLY STRUCK keys over ringing tails
+        val deltaKeyEnergies = FloatArray(numCandidates)
+        val onsetResult = if (hasPrevSpectrum && maxDeltaMag > maxPeakMag * 0.14f && maxDeltaMag > 0.45f) {
+            scoreSpectrum(
+                spectrum = deltaMag,
+                meanFloor = max(meanDeltaFloor, meanFloor * 0.25f),
+                maxPeak = maxDeltaMag,
+                minBin = minBin,
+                maxBin = maxBin,
+                outKeyEnergies = deltaKeyEnergies
+            )
+        } else if (!hasPrevSpectrum && rms > 0.005f) {
+            System.arraycopy(keyEnergies, 0, deltaKeyEnergies, 0, numCandidates)
+            fullResult
         } else {
-            mag
+            ScoreResult(null, 0f, 0f)
         }
 
-        val harmonicWeights = floatArrayOf(1.00f, 0.78f, 0.56f, 0.38f, 0.24f)
-        // Slight piano string inharmonicity coefficient B (helps match upper partials of real upright/grand pianos)
+        for (i in 0 until numCandidates) {
+            val e = keyEnergies[i]
+            keyDeltaRatios[i] = if (e > 0.05f) (deltaKeyEnergies[i] / e).coerceIn(0f, 1f) else 0f
+        }
+
+        // Save current magnitude spectrum for next frame
+        System.arraycopy(mag, minBin, prevMag, minBin, maxBin - minBin + 1)
+        hasPrevSpectrum = true
+
+        val winningMidi = fullResult.midi
+        val refinedHz = if (winningMidi != null) {
+            refineFundamentalHz(winningMidi, minBin, maxBin)
+        } else {
+            0.0
+        }
+        val centsOff = if (winningMidi != null && refinedHz > 0.0) {
+            MusicTheory.frequencyToNearestMidi(refinedHz, calibrationCents).second
+        } else {
+            0f
+        }
+        val winEnergy = if (winningMidi != null) {
+            keyEnergies[winningMidi - minMidi]
+        } else {
+            0f
+        }
+
+        return SpectralPitchFrame(
+            midiNote = winningMidi,
+            onsetMidiNote = onsetResult.midi,
+            onsetConfidence = onsetResult.confidence,
+            frequencyHz = refinedHz,
+            centsOff = centsOff,
+            confidence = fullResult.confidence,
+            rms = rms,
+            onsetStrength = rawFlux,
+            isOnset = isOnset,
+            activeNoteEnergy = winEnergy,
+            keyEnergies = keyEnergies,
+            keyDeltaRatios = keyDeltaRatios
+        )
+    }
+
+    private data class ScoreResult(
+        val midi: Int?,
+        val score: Float,
+        val confidence: Float
+    )
+
+    private fun scoreSpectrum(
+        spectrum: FloatArray,
+        meanFloor: Float,
+        maxPeak: Float,
+        minBin: Int,
+        maxBin: Int,
+        outKeyEnergies: FloatArray?
+    ): ScoreResult {
+        if (maxPeak < 0.25f) return ScoreResult(null, 0f, 0f)
+
+        val harmonicWeights = floatArrayOf(1.15f, 0.78f, 0.56f, 0.34f, 0.20f)
         val inharmonicityB = 0.00012
 
-        var bestIdx = -1
+        var bestMidi: Int? = null
         var bestScore = 0f
         var secondBestScore = 0f
 
@@ -202,148 +299,101 @@ class PianoPitchEngine(
             val midi = minMidi + idx
             val f0 = MusicTheory.midiToFrequency(midi, calibrationCents)
 
-            var harmonicScore = 0f
-            var fundMag = 0f
+            var h1Peak = 0f
+            var h2Peak = 0f
+            var h3Peak = 0f
+            var h1Snr = 0f
+            var oddScore = 0f
+            var evenScore = 0f
+            var totalScore = 0f
             var activeHarmonics = 0
 
             for (h in 1..5) {
                 val expectedHz = f0 * h * sqrt(1.0 + inharmonicityB * h * h)
                 if (expectedHz > 4600.0) break
 
-                // Search narrow +/- 38 cents band around expected harmonic frequency
-                val tolHz = max(binHz * 1.15, expectedHz * 0.022)
+                val tolHz = max(binHz * 1.15, expectedHz * 0.020)
                 val loBin = max(minBin, ((expectedHz - tolHz) / binHz).toInt())
                 val hiBin = minOf(maxBin, ((expectedHz + tolHz) / binHz).toInt() + 1)
 
                 var peak = 0f
                 for (k in loBin..hiBin) {
-                    val v = spectralSource[k]
+                    val v = spectrum[k]
                     if (v > peak) peak = v
                 }
 
-                // Local spectral contrast (peak must stand out above local neighborhood, rejects broadband noise)
-                val localNoise = estimateLocalFloor(spectralSource, loBin, hiBin, minBin, maxBin)
-                val snr = peak / (localNoise + 0.002f)
+                val localNoise = estimateLocalFloor(spectrum, loBin, hiBin, minBin, maxBin)
+                val snr = peak / (localNoise + 0.003f)
 
-                if (h == 1) {
-                    fundMag = peak
+                when (h) {
+                    1 -> { h1Peak = peak; h1Snr = snr }
+                    2 -> h2Peak = peak
+                    3 -> h3Peak = peak
                 }
 
-                if (snr > 2.2f && peak > meanSpectralFloor * 1.4f) {
-                    // Log-magnitude compression prevents a single loud overtone from overriding a true fundamental
-                    harmonicScore += harmonicWeights[h - 1] * ln(1f + (peak / (meanSpectralFloor + 0.001f)))
+                val minPeakForHarmonic = max(meanFloor * 1.6f, maxPeak * 0.035f)
+                if (snr > 2.4f && peak >= minPeakForHarmonic) {
+                    val relAmp = (peak / maxPeak).coerceIn(0f, 1f)
+                    val snrBoost = ln(1f + (snr - 1f).coerceAtLeast(0f)).coerceAtMost(3.2f)
+                    val contribution = harmonicWeights[h - 1] * sqrt(relAmp) * snrBoost
+                    totalScore += contribution
+                    if (h % 2 == 1) oddScore += contribution else evenScore += contribution
                     activeHarmonics++
                 }
             }
 
-            // CRITICAL ANTI-OCTAVE & ANTI-FIFTH RULES:
-            // Rule A: For F3 (53) and above, the fundamental MUST actually have energy!
-            // (If someone plays C5, C4 has zero energy at 261 Hz -> reject C4 immediately!)
-            val fundThreshold = if (midi >= 53) meanSpectralFloor * 2.2f else meanSpectralFloor * 1.2f
-            if (fundMag < fundThreshold) {
-                harmonicScore *= 0.15f
+            if (outKeyEnergies != null) {
+                outKeyEnergies[idx] = h1Peak + h2Peak + h3Peak
             }
 
-            // Rule B: Require at least 2 harmonics (or very strong fundamental for high C6 notes)
-            if (activeHarmonics < 2 && midi < 78) {
-                harmonicScore *= 0.45f
+            // ANTI-SUB-OCTAVE RULE 1 (Strict Fundamental Presence):
+            val minH1VsH2 = if (midi < 60) 0.18f else 0.26f
+            val hasRealFundamental = h1Snr >= 2.6f &&
+                h1Peak >= maxPeak * 0.10f &&
+                h1Peak >= h2Peak * minH1VsH2
+
+            if (!hasRealFundamental) {
+                continue
             }
 
-            // Rule C: Gentle continuity hysteresis during sustain (non-onset) to prevent jitter
-            if (!isOnset && lastWinningMidi == midi) {
-                harmonicScore *= 1.12f
+            // ANTI-SUB-OCTAVE RULE 2 (Odd-Harmonic Balance):
+            if (evenScore > 0.01f && oddScore < evenScore * 0.58f) {
+                totalScore *= 0.25f
             }
 
-            candidateScores[idx] = harmonicScore
-            candidateFundEnergies[idx] = fundMag
+            if (activeHarmonics < 2 && midi < 79) {
+                totalScore *= 0.50f
+            }
 
-            if (harmonicScore > bestScore) {
+            if (totalScore > bestScore) {
                 secondBestScore = bestScore
-                bestScore = harmonicScore
-                bestIdx = idx
-            } else if (harmonicScore > secondBestScore) {
-                secondBestScore = harmonicScore
+                bestScore = totalScore
+                bestMidi = midi
+            } else if (totalScore > secondBestScore) {
+                secondBestScore = totalScore
             }
         }
 
-        // Sub-octave rescue check: if winning note is an octave above another candidate whose fundamental
-        // IS clearly present AND has strong odd harmonics (3rd harmonic), prefer the lower fundamental!
-        if (bestIdx >= 12) {
-            val subIdx = bestIdx - 12
-            val subMidi = minMidi + subIdx
-            val subFund = candidateFundEnergies[subIdx]
-            val winFund = candidateFundEnergies[bestIdx]
-            if (subFund > meanSpectralFloor * 3.5f &&
-                subFund >= winFund * 0.35f &&
-                candidateScores[subIdx] >= bestScore * 0.78f
-            ) {
-                // Verify 3rd harmonic of subMidi (which is NOT a harmonic of winning note!)
-                val fSub3 = MusicTheory.midiToFrequency(subMidi, calibrationCents) * 3.0
-                val h3Peak = peakAround(spectralSource, fSub3, minBin, maxBin)
-                if (h3Peak > meanSpectralFloor * 2.5f) {
-                    bestIdx = subIdx
-                    bestScore = candidateScores[subIdx]
-                }
-            }
+        if (bestMidi == null || bestScore < 1.35f) {
+            return ScoreResult(null, 0f, 0f)
         }
 
-        // Save current magnitude spectrum for next frame's flux/delta calculation
-        System.arraycopy(mag, minBin, prevMag, minBin, maxBin - minBin + 1)
-        hasPrevSpectrum = true
+        val margin = ((bestScore - secondBestScore) / bestScore).coerceIn(0f, 1f)
+        val strength = (bestScore / 4.2f).coerceIn(0f, 1f)
+        val confidence = (0.55f * strength + 0.45f * max(margin, 0.25f)).coerceIn(0f, 1f)
 
-        // 6. Validate winning score clarity (rejects speech, taps, claps, room noise)
-        if (bestIdx == -1 || bestScore < 2.2f) {
-            if (rms < 0.006f) lastWinningMidi = null
-            return SpectralPitchFrame(
-                midiNote = null,
-                frequencyHz = 0.0,
-                centsOff = 0f,
-                confidence = 0f,
-                rms = rms,
-                onsetStrength = rawFlux,
-                isOnset = isOnset,
-                activeNoteEnergy = 0f
-            )
-        }
-
-        val winningMidi = minMidi + bestIdx
-        lastWinningMidi = winningMidi
-
-        // 7. Parabolic sub-bin interpolation around fundamental (and 2nd harmonic) for razor-sharp Hz (for Štimuj C!)
-        val refinedHz = refineFundamentalHz(winningMidi, minBin, maxBin)
-        val (_, centsOff) = MusicTheory.frequencyToNearestMidi(refinedHz, calibrationCents)
-
-        // Compute normalized confidence 0..1 from score strength and margin over runner-up
-        val marginRatio = if (bestScore > 0f) ((bestScore - secondBestScore) / bestScore).coerceIn(0f, 1f) else 0f
-        val strengthFactor = (bestScore / 7.5f).coerceIn(0f, 1f)
-        val confidence = (0.55f * strengthFactor + 0.45f * max(marginRatio, 0.35f)).coerceIn(0f, 1f)
-
-        // Compute total harmonic energy of winning note (used to detect piano key damper release!)
-        val winEnergy = computeNoteHarmonicEnergy(winningMidi, minBin, maxBin)
-
-        return SpectralPitchFrame(
-            midiNote = winningMidi,
-            frequencyHz = refinedHz,
-            centsOff = centsOff,
-            confidence = confidence,
-            rms = rms,
-            onsetStrength = rawFlux,
-            isOnset = isOnset,
-            activeNoteEnergy = winEnergy
-        )
+        return ScoreResult(bestMidi, bestScore, confidence)
     }
 
     private fun refineFundamentalHz(midi: Int, minBin: Int, maxBin: Int): Double {
         val nominalF0 = MusicTheory.midiToFrequency(midi, calibrationCents)
-        // Prefer 2nd harmonic / 2 for low notes (< 220 Hz) where bin spacing is coarser relative to semitone,
-        // otherwise use fundamental directly when strong
         val f1PeakBin = findPeakBinAround(mag, nominalF0, minBin, maxBin)
         val f1Interp = parabolicBinFrequency(mag, f1PeakBin)
 
         val f2 = nominalF0 * 2.0
         if (f2 < 4000.0 && nominalF0 < 240.0) {
             val f2PeakBin = findPeakBinAround(mag, f2, minBin, maxBin)
-            if (mag[f2PeakBin] > mag[f1PeakBin] * 0.8f) {
+            if (mag[f2PeakBin] > mag[f1PeakBin] * 0.85f) {
                 return parabolicBinFrequency(mag, f2PeakBin) / 2.0
             }
         }
@@ -351,7 +401,7 @@ class PianoPitchEngine(
     }
 
     private fun findPeakBinAround(spectrum: FloatArray, targetHz: Double, minBin: Int, maxBin: Int): Int {
-        val tolHz = max(binHz * 1.5, targetHz * 0.035) // +/- ~60 cents for tuning detection
+        val tolHz = max(binHz * 1.5, targetHz * 0.038)
         val lo = max(minBin, ((targetHz - tolHz) / binHz).toInt())
         val hi = minOf(maxBin, ((targetHz + tolHz) / binHz).toInt() + 1)
         var bestK = lo
@@ -379,18 +429,6 @@ class PianoPitchEngine(
         return (k + shift) * binHz
     }
 
-    private fun peakAround(spectrum: FloatArray, targetHz: Double, minBin: Int, maxBin: Int): Float {
-        if (targetHz > 4600.0) return 0f
-        val tolHz = max(binHz * 1.15, targetHz * 0.022)
-        val lo = max(minBin, ((targetHz - tolHz) / binHz).toInt())
-        val hi = minOf(maxBin, ((targetHz + tolHz) / binHz).toInt() + 1)
-        var p = 0f
-        for (k in lo..hi) {
-            if (spectrum[k] > p) p = spectrum[k]
-        }
-        return p
-    }
-
     private fun estimateLocalFloor(
         spectrum: FloatArray,
         loBin: Int,
@@ -398,10 +436,10 @@ class PianoPitchEngine(
         minBin: Int,
         maxBin: Int
     ): Float {
-        val leftStart = max(minBin, loBin - 6)
+        val leftStart = max(minBin, loBin - 7)
         val leftEnd = max(minBin, loBin - 2)
         val rightStart = minOf(maxBin, hiBin + 2)
-        val rightEnd = minOf(maxBin, hiBin + 6)
+        val rightEnd = minOf(maxBin, hiBin + 7)
         var sum = 0f
         var count = 0
         for (k in leftStart..leftEnd) {
@@ -415,18 +453,7 @@ class PianoPitchEngine(
         return if (count > 0) sum / count else 0.001f
     }
 
-    private fun computeNoteHarmonicEnergy(midi: Int, minBin: Int, maxBin: Int): Float {
-        val f0 = MusicTheory.midiToFrequency(midi, calibrationCents)
-        var energy = 0f
-        for (h in 1..3) {
-            val p = peakAround(mag, f0 * h, minBin, maxBin)
-            energy += p
-        }
-        return energy
-    }
-
     private fun computeFft() {
-        // Bit-reversal permutation
         for (i in 0 until fftSize) {
             val j = bitRev[i]
             if (j > i) {
@@ -434,7 +461,6 @@ class PianoPitchEngine(
                 val ti = fftImag[i]; fftImag[i] = fftImag[j]; fftImag[j] = ti
             }
         }
-        // Cooley-Tukey iterative Radix-2 FFT
         var len = 2
         while (len <= fftSize) {
             val halfLen = len ushr 1
@@ -466,6 +492,8 @@ class PianoPitchEngine(
 
     private fun emptyFrame(rms: Float) = SpectralPitchFrame(
         midiNote = null,
+        onsetMidiNote = null,
+        onsetConfidence = 0f,
         frequencyHz = 0.0,
         centsOff = 0f,
         confidence = 0f,

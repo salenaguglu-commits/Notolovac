@@ -214,12 +214,17 @@ fun TuneCalibrationDialog(
                                 )
                             }
                             Text(
-                                text = "C4 • $hzFormatted ($sign$centsInt ct)",
+                                text = "Tvoje C4: $hzFormatted ($sign$centsInt ct)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = WarmInk
                             )
                         }
+                        Text(
+                            text = "Standard: 261.6 Hz  •  Razlika se automatski uračunava",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MutedInk
+                        )
 
                         if (state.isListening) {
                             Spacer(Modifier.height(8.dp))

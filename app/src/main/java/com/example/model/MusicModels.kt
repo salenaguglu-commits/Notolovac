@@ -91,14 +91,14 @@ object MusicTheory {
      * Computes how many cents a played C note (in any octave C2..C6) deviates from standard C.
      */
     fun computeCalibrationCentsFromC(measuredHz: Double): Pair<Float, Double>? {
-        if (measuredHz < 60.0 || measuredHz > 2200.0) return null
+        if (measuredHz < 115.0 || measuredHz > 1200.0) return null
         val midiFloat = 69.0 + 12.0 * (ln(measuredHz / STANDARD_A4_HZ) / ln(2.0))
-        // Find nearest C midi note (36, 48, 60, 72, 84)
-        val cCandidates = intArrayOf(36, 48, 60, 72, 84)
+        // Find nearest C midi note in piano melody range (C3=48, C4=60, C5=72, C6=84)
+        val cCandidates = intArrayOf(48, 60, 72, 84)
         val nearestC = cCandidates.minByOrNull { kotlin.math.abs(midiFloat - it) } ?: 60
         val centsDiff = ((midiFloat - nearestC) * 100.0).toFloat()
-        // Reject if it's more than 120 cents away from any C (child probably played D or B)
-        if (kotlin.math.abs(centsDiff) > 120f) return null
+        // Reject if more than 80 cents away from any C (child probably played B or C#)
+        if (kotlin.math.abs(centsDiff) > 80f) return null
         val normalizedC4Hz = STANDARD_C4_HZ * 2.0.pow(centsDiff / 1200.0)
         return centsDiff to normalizedC4Hz
     }
