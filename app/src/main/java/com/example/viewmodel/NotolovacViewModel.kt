@@ -5,6 +5,7 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.AudioCaptureEngine
+import com.example.audio.MetronomeEngine
 import com.example.audio.PianoNoteTracker
 import com.example.audio.PianoSynthesizer
 import com.example.data.NotolovacDatabase
@@ -83,6 +84,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     private val preferencesRepository = UserPreferencesRepository(application)
     private val audioEngine = AudioCaptureEngine()
     private val synthesizer = PianoSynthesizer()
+    private val metronomeEngine = MetronomeEngine()
 
     val settings: StateFlow<UserSettings> = preferencesRepository.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -101,7 +103,6 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var recordingJob: Job? = null
     private var recordingTimerJob: Job? = null
-    private var metronomeJob: Job? = null
     private var calibrationJob: Job? = null
     private var playbackJob: Job? = null
     private var keyGlowJob: Job? = null
@@ -139,9 +140,8 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                 state.copy(activeSheet = sheet.copy(bpm = clamped))
             } ?: state
         }
-        if (_uiState.value.metronomeRunning) {
-            restartMetronomeLoop(clamped, settings.value.beatsPerMeasure)
-        }
+        // Seamlessly adjust running metronome tempo without restarting AudioTrack
+        metronomeEngine.updateBpm(clamped)
     }
 
     fun setBeatsPerMeasure(beats: Int) {
@@ -149,9 +149,8 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             preferencesRepository.setBeatsPerMeasure(valid)
         }
-        if (_uiState.value.metronomeRunning) {
-            restartMetronomeLoop(settings.value.metronomeBpm, valid)
-        }
+        // Seamlessly adjust time signature without dropping a beat
+        metronomeEngine.updateBeatsPerMeasure(valid)
     }
 
     fun toggleMetronome() {
@@ -160,30 +159,27 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
             preferencesRepository.setMetronomeEnabled(nowRunning)
         }
         if (nowRunning) {
-            restartMetronomeLoop(settings.value.metronomeBpm, settings.value.beatsPerMeasure)
+            startMetronomeLoop(settings.value.metronomeBpm, settings.value.beatsPerMeasure)
         } else {
             stopMetronomeLoop()
         }
     }
 
-    private fun restartMetronomeLoop(bpm: Int, beatsPerMeasure: Int) {
-        metronomeJob?.cancel()
+    private fun startMetronomeLoop(bpm: Int, beatsPerMeasure: Int) {
         _uiState.update { it.copy(metronomeRunning = true, currentBeatIndex = 0) }
-        metronomeJob = viewModelScope.launch {
-            var beat = 0
-            val intervalMs = (60_000L / bpm.coerceIn(60, 140))
-            while (isActive) {
-                _uiState.update { it.copy(currentBeatIndex = beat) }
-                synthesizer.playMetronomeTick(accent = beat == 0)
-                beat = (beat + 1) % beatsPerMeasure
-                delay(intervalMs)
+        metronomeEngine.start(
+            bpm = bpm,
+            beatsPerMeasure = beatsPerMeasure,
+            onBeat = { beatIdx ->
+                _uiState.update { state ->
+                    if (state.metronomeRunning) state.copy(currentBeatIndex = beatIdx) else state
+                }
             }
-        }
+        )
     }
 
     private fun stopMetronomeLoop() {
-        metronomeJob?.cancel()
-        metronomeJob = null
+        metronomeEngine.stop()
         _uiState.update { it.copy(metronomeRunning = false, currentBeatIndex = -1) }
     }
 
@@ -216,7 +212,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         val tracker = PianoNoteTracker()
         activeTracker = tracker
 
-        val useMetronome = currentSettings.metronomeEnabled || _uiState.value.metronomeRunning
+        val useMetronome = _uiState.value.metronomeRunning
         recordingHadMetronome = useMetronome
 
         _uiState.update {
@@ -230,10 +226,6 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                 liveCapturedNotes = emptyList(),
                 activeSheet = null
             )
-        }
-
-        if (useMetronome && !_uiState.value.metronomeRunning) {
-            restartMetronomeLoop(currentSettings.metronomeBpm, currentSettings.beatsPerMeasure)
         }
 
         recordingTimerJob?.cancel()
@@ -642,9 +634,9 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         super.onCleared()
         recordingJob?.cancel()
         recordingTimerJob?.cancel()
-        metronomeJob?.cancel()
         calibrationJob?.cancel()
         playbackJob?.cancel()
+        metronomeEngine.stop()
         synthesizer.stopAll()
     }
 }

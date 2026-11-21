@@ -405,7 +405,7 @@ private fun MetronomeCompactCard(
                 shape = CircleShape,
                 color = if (isRunning) LavenderMusic else LavenderContainer,
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .testTag("metronome_toggle_button")
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -413,7 +413,7 @@ private fun MetronomeCompactCard(
                         imageVector = if (isRunning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
                         contentDescription = if (isRunning) "Zaustavi metronom" else "Pokreni metronom",
                         tint = if (isRunning) Color.White else OnLavenderContainer,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -421,7 +421,7 @@ private fun MetronomeCompactCard(
             // Beat dots + label
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 6.dp)
+                modifier = Modifier.padding(horizontal = 4.dp)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -454,12 +454,12 @@ private fun MetronomeCompactCard(
             // BPM - / + controls
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                horizontalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 IconButton(
                     onClick = { onBpmChange(bpm - 5) },
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(48.dp)
                         .testTag("bpm_minus_button")
                 ) {
                     Icon(Icons.Filled.Remove, contentDescription = "Smanji tempo", tint = WarmInk)
@@ -473,7 +473,7 @@ private fun MetronomeCompactCard(
                 IconButton(
                     onClick = { onBpmChange(bpm + 5) },
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(48.dp)
                         .testTag("bpm_plus_button")
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Povećaj tempo", tint = WarmInk)
@@ -487,7 +487,7 @@ private fun MetronomeCompactCard(
                 color = WarmCard,
                 border = BorderStroke(1.dp, WarmCardBorder),
                 modifier = Modifier
-                    .height(38.dp)
+                    .height(48.dp)
                     .testTag("time_signature_button")
             ) {
                 Box(

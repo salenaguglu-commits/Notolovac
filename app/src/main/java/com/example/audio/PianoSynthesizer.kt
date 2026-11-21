@@ -14,7 +14,7 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /**
- * Reliable, zero-asset warm piano & woodblock metronome synthesizer built on streaming AudioTrack.
+ * Reliable, zero-asset warm piano synthesizer built on streaming AudioTrack.
  * Uses MODE_STREAM with WRITE_BLOCKING on Dispatchers.IO so playback works consistently across
  * all Android devices without Looper or MODE_STATIC buffer-size quirks.
  */
@@ -34,13 +34,6 @@ class PianoSynthesizer {
             val freq = MusicTheory.midiToFrequency(midiNote, calibrationCents)
             val totalMs = durationMs.coerceIn(180, 2600)
             val pcm = synthesizePianoPcm(freq, totalMs, volume)
-            playStreamingBuffer(pcm)
-        }
-    }
-
-    fun playMetronomeTick(accent: Boolean) {
-        scope.launch {
-            val pcm = synthesizeWoodblockPcm(accent)
             playStreamingBuffer(pcm)
         }
     }
@@ -95,24 +88,6 @@ class PianoSynthesizer {
             val scaled = (sample * attackEnv * releaseEnv * volume * 31000.0)
                 .coerceIn(-32767.0, 32767.0)
             out[i] = scaled.toInt().toShort()
-        }
-        return out
-    }
-
-    private fun synthesizeWoodblockPcm(accent: Boolean): ShortArray {
-        val toneSamples = (sampleRate * 55) / 1000
-        val tailSamples = (sampleRate * 60) / 1000
-        val out = ShortArray(toneSamples + tailSamples)
-        val baseFreq = if (accent) 1180.0 else 820.0
-        val twoPi = 2.0 * PI
-
-        for (i in 0 until toneSamples) {
-            val t = i.toDouble() / sampleRate
-            val env = exp(-68.0 * t)
-            val wave = 0.72 * sin(twoPi * baseFreq * t) +
-                0.28 * sin(twoPi * baseFreq * 1.52 * t)
-            val gain = if (accent) 28000.0 else 21000.0
-            out[i] = (wave * env * gain).coerceIn(-32767.0, 32767.0).toInt().toShort()
         }
         return out
     }
