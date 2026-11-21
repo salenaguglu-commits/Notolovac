@@ -35,16 +35,39 @@ enum class AppTab {
     NOTEBOOK
 }
 
+enum class TunePhase {
+    IDLE,
+    LISTENING,
+    LOCKING_C,
+    WRONG_NOTE,
+    RETRY_UNSTABLE,
+    SAVED
+}
+
 data class TuneDialogState(
     val isOpen: Boolean = false,
+    val phase: TunePhase = TunePhase.IDLE,
     val isListening: Boolean = false,
-    val liveHz: Double = 0.0,
+    // Live microphone detection readout
+    val heardNoteName: String? = null,
+    val heardRawHz: Double = 0.0,
+    val liveHz: Double = MusicTheory.STANDARD_C4_HZ,
     val liveCents: Float = 0f,
     val liveRms: Float = 0f,
-    val progress: Float = 0f,
+    val lockedSamples: Int = 0,
+    val requiredSamples: Int = 7,
     val statusMessage: String = "Pritisni „Slušaj moje C“ pa odsviraj srednje C (Do) na klaviru.",
-    val completed: Boolean = false
-)
+    // Persisted active calibration proof
+    val savedIsCalibrated: Boolean = false,
+    val savedC4Hz: Double = MusicTheory.STANDARD_C4_HZ,
+    val savedCents: Float = 0f,
+    val savedA4Hz: Double = MusicTheory.STANDARD_A4_HZ
+) {
+    val progress: Float
+        get() = (lockedSamples.toFloat() / requiredSamples.coerceAtLeast(1)).coerceIn(0f, 1f)
+    val completed: Boolean
+        get() = phase == TunePhase.SAVED
+}
 
 data class ActiveSheetState(
     val songId: Long = 0L,
@@ -321,14 +344,31 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         if (_uiState.value.isRecording) stopRecording()
         stopPlayback()
         stopMetronomeLoop()
+        val s = settings.value
+        val savedC4 = if (s.isCalibrated) s.calibratedC4Hz.toDouble() else MusicTheory.STANDARD_C4_HZ
+        val savedCents = if (s.isCalibrated) s.calibrationCents else 0f
+        val savedA4 = MusicTheory.equivalentA4Hz(savedCents)
         _uiState.update {
             it.copy(
                 tuneDialog = TuneDialogState(
                     isOpen = true,
+                    phase = TunePhase.IDLE,
                     isListening = false,
-                    liveCents = settings.value.calibrationCents,
-                    liveHz = settings.value.calibratedC4Hz.toDouble(),
-                    statusMessage = "Pritisni „Slušaj moje C“ pa odsviraj srednje C (Do) na klaviru."
+                    heardNoteName = null,
+                    heardRawHz = 0.0,
+                    liveCents = savedCents,
+                    liveHz = savedC4,
+                    liveRms = 0f,
+                    lockedSamples = 0,
+                    statusMessage = if (s.isCalibrated) {
+                        "Tvoj štim je već sačuvan i aktivan. Možeš ponovo da izmeriš C ako želiš."
+                    } else {
+                        "Pritisni „Slušaj moje C“, zatim pritisni i zadrži srednje C (Do) 1–2 sekunde."
+                    },
+                    savedIsCalibrated = s.isCalibrated,
+                    savedC4Hz = savedC4,
+                    savedCents = savedCents,
+                    savedA4Hz = savedA4
                 )
             )
         }
@@ -354,11 +394,18 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
             _uiState.update {
                 it.copy(
                     tuneDialog = it.tuneDialog.copy(
+                        phase = TunePhase.IDLE,
+                        isListening = false,
+                        heardNoteName = null,
+                        heardRawHz = 0.0,
                         liveCents = 0f,
                         liveHz = MusicTheory.STANDARD_C4_HZ,
-                        progress = 0f,
-                        completed = false,
-                        statusMessage = "Vraćeno na standardno štimovanje (A4 = 440 Hz, C4 = 261.6 Hz)."
+                        lockedSamples = 0,
+                        savedIsCalibrated = false,
+                        savedC4Hz = MusicTheory.STANDARD_C4_HZ,
+                        savedCents = 0f,
+                        savedA4Hz = MusicTheory.STANDARD_A4_HZ,
+                        statusMessage = "Vraćeno na standardni štim (C4 = 261.6 Hz, A4 = 440.0 Hz)."
                     ),
                     snackbarMessage = "Štimovanje vraćeno na standardnih 440 Hz."
                 )
@@ -372,27 +419,37 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         val collectedCents = mutableListOf<Float>()
-        val targetSamples = 8
+        val targetSamples = 7
+        var silentFramesSinceLastC = 0
+        var lastPartialC4Hz = 0.0
+        var lastPartialCents = 0f
+        var wrongNoteMidi: Int? = null
+        var wrongNoteFrames = 0
+        var quietFramesTotal = 0
 
         _uiState.update {
             it.copy(
                 tuneDialog = it.tuneDialog.copy(
+                    phase = TunePhase.LISTENING,
                     isListening = true,
+                    heardNoteName = null,
+                    heardRawHz = 0.0,
                     liveRms = 0f,
-                    progress = 0f,
-                    completed = false,
-                    statusMessage = "Slušam... Odsviraj i zadrži notu C (Do) na klaviru!"
+                    lockedSamples = 0,
+                    requiredSamples = targetSamples,
+                    statusMessage = "Slušam mikrofon... Pritisni i zadrži jednu dirku C (Do) 1–2 sekunde."
                 )
             )
         }
 
         calibrationJob?.cancel()
         calibrationJob = viewModelScope.launch {
-            audioEngine.pitchFramesFlow(calibrationCents = 0f)
+            audioEngine.pitchFramesFlow(calibrationCents = 0f, widePitchTolerance = true)
                 .catch { err ->
                     _uiState.update {
                         it.copy(
                             tuneDialog = it.tuneDialog.copy(
+                                phase = TunePhase.IDLE,
                                 isListening = false,
                                 liveRms = 0f,
                                 statusMessage = err.message ?: "Mikrofon nije dostupan."
@@ -405,64 +462,165 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     _uiState.update {
                         it.copy(tuneDialog = it.tuneDialog.copy(liveRms = est.rms))
                     }
-                    if (est.midiNote != null && est.frequencyHz > 0.0 && est.confidence >= 0.45f && est.rms >= 0.0035f) {
+
+                    val hasClearPitch = est.midiNote != null &&
+                        est.frequencyHz > 0.0 &&
+                        est.confidence >= 0.42f &&
+                        est.rms >= 0.0030f
+
+                    if (hasClearPitch) {
+                        quietFramesTotal = 0
                         val cResult = MusicTheory.computeCalibrationCentsFromC(est.frequencyHz)
                         if (cResult != null) {
+                            // Heard a C note!
+                            wrongNoteMidi = null
+                            wrongNoteFrames = 0
+                            silentFramesSinceLastC = 0
+
                             val (centsDiff, normalizedC4) = cResult
-                            if (collectedCents.isNotEmpty() && abs(collectedCents.last() - centsDiff) > 25f) {
+                            val nearestC = MusicTheory.nearestCMidi(est.frequencyHz)
+                            val cLabel = MusicTheory.formatFullNoteDescription(nearestC)
+                            val roundedCt = centsDiff.roundToInt()
+                            val sign = if (roundedCt > 0) "+" else ""
+                            val c4Text = String.format(java.util.Locale.US, "%.1f Hz", normalizedC4)
+
+                            // Check stability against previous C readings
+                            val unstableJump = collectedCents.isNotEmpty() &&
+                                abs(collectedCents.last() - centsDiff) > 18f
+
+                            if (unstableJump) {
                                 collectedCents.clear()
-                            }
-                            collectedCents.add(centsDiff)
-                            val prog = (collectedCents.size.toFloat() / targetSamples).coerceIn(0f, 1f)
-
-                            _uiState.update {
-                                it.copy(
-                                    tuneDialog = it.tuneDialog.copy(
-                                        liveHz = normalizedC4,
-                                        liveCents = centsDiff,
-                                        progress = prog,
-                                        statusMessage = "Odlično! Zadrži notu C još malo..."
-                                    )
-                                )
-                            }
-
-                            if (collectedCents.size >= targetSamples) {
-                                val sorted = collectedCents.sorted()
-                                val medianCents = sorted[sorted.size / 2]
-                                val calibratedC4 = (MusicTheory.STANDARD_C4_HZ *
-                                    Math.pow(2.0, medianCents / 1200.0)).toFloat()
-
-                                preferencesRepository.saveCalibration(
-                                    cents = medianCents,
-                                    c4Hz = calibratedC4,
-                                    isCalibrated = true
-                                )
-                                val roundedCents = medianCents.roundToInt()
-                                val sign = if (roundedCents > 0) "+" else ""
-                                val hzText = String.format(java.util.Locale.US, "%.1f Hz", calibratedC4)
                                 _uiState.update {
                                     it.copy(
                                         tuneDialog = it.tuneDialog.copy(
-                                            isListening = false,
-                                            liveHz = calibratedC4.toDouble(),
-                                            liveCents = medianCents,
-                                            progress = 1f,
-                                            completed = true,
-                                            statusMessage = "Notolovac se prilagodio tvom klaviru! Tvoje C4 = $hzText ($sign$roundedCents ct) — sve note se sada računaju po ovom štimu."
-                                        ),
-                                        snackbarMessage = "Notolovac sada sluša po štimu tvog klavira ($sign$roundedCents ct)!"
+                                            phase = TunePhase.RETRY_UNSTABLE,
+                                            heardNoteName = cLabel,
+                                            heardRawHz = est.frequencyHz,
+                                            liveHz = normalizedC4,
+                                            liveCents = centsDiff,
+                                            lockedSamples = 0,
+                                            statusMessage = "Čuo sam $cLabel ($c4Text, $sign$roundedCt ct), ali ton nije stabilan. Pritisni opet samo jednu dirku C!"
+                                        )
                                     )
                                 }
-                                calibrationJob?.cancel()
+                            } else {
+                                collectedCents.add(centsDiff)
+                                lastPartialC4Hz = normalizedC4
+                                lastPartialCents = centsDiff
+
+                                _uiState.update {
+                                    it.copy(
+                                        tuneDialog = it.tuneDialog.copy(
+                                            phase = TunePhase.LOCKING_C,
+                                            heardNoteName = cLabel,
+                                            heardRawHz = est.frequencyHz,
+                                            liveHz = normalizedC4,
+                                            liveCents = centsDiff,
+                                            lockedSamples = collectedCents.size,
+                                            statusMessage = "Čujem $cLabel ($c4Text, $sign$roundedCt ct) — zadrži dirku još trenutak (${collectedCents.size}/$targetSamples)..."
+                                        )
+                                    )
+                                }
+
+                                if (collectedCents.size >= targetSamples) {
+                                    val sorted = collectedCents.sorted()
+                                    val medianCents = sorted[sorted.size / 2]
+                                    val calibratedC4 = (MusicTheory.STANDARD_C4_HZ *
+                                        Math.pow(2.0, medianCents / 1200.0)).toFloat()
+                                    val equivalentA4 = MusicTheory.equivalentA4Hz(medianCents)
+
+                                    preferencesRepository.saveCalibration(
+                                        cents = medianCents,
+                                        c4Hz = calibratedC4,
+                                        isCalibrated = true
+                                    )
+
+                                    val finalCt = medianCents.roundToInt()
+                                    val finalSign = if (finalCt > 0) "+" else ""
+                                    val finalC4Text = String.format(java.util.Locale.US, "%.1f Hz", calibratedC4)
+                                    val finalA4Text = String.format(java.util.Locale.US, "%.1f Hz", equivalentA4)
+
+                                    _uiState.update {
+                                        it.copy(
+                                            tuneDialog = it.tuneDialog.copy(
+                                                phase = TunePhase.SAVED,
+                                                isListening = false,
+                                                heardNoteName = cLabel,
+                                                heardRawHz = est.frequencyHz,
+                                                liveHz = calibratedC4.toDouble(),
+                                                liveCents = medianCents,
+                                                lockedSamples = targetSamples,
+                                                savedIsCalibrated = true,
+                                                savedC4Hz = calibratedC4.toDouble(),
+                                                savedCents = medianCents,
+                                                savedA4Hz = equivalentA4,
+                                                statusMessage = "Štim tvog klavira je sačuvan! C4 = $finalC4Text ($finalSign$finalCt ct • A4 ≈ $finalA4Text). Sve note se od sada prepoznaju po ovom štimu."
+                                            ),
+                                            snackbarMessage = "Sačuvan štim klavira: C4 = $finalC4Text ($finalSign$finalCt ct)"
+                                        )
+                                    }
+                                    calibrationJob?.cancel()
+                                }
                             }
                         } else {
-                            val heardName = MusicTheory.formatFullNoteDescription(est.midiNote)
-                            _uiState.update {
-                                it.copy(
-                                    tuneDialog = it.tuneDialog.copy(
-                                        statusMessage = "Čujem $heardName — pokušaj da pritisneš dirku C (Do)!"
+                            // Clearly heard a DIFFERENT note (not C)
+                            val midi = est.midiNote
+                            if (wrongNoteMidi == midi) {
+                                wrongNoteFrames++
+                            } else {
+                                wrongNoteMidi = midi
+                                wrongNoteFrames = 1
+                            }
+
+                            if (wrongNoteFrames >= 2) {
+                                collectedCents.clear()
+                                silentFramesSinceLastC = 0
+                                val heardName = MusicTheory.formatFullNoteDescription(midi)
+                                val rawHzText = String.format(java.util.Locale.US, "%.1f Hz", est.frequencyHz)
+                                _uiState.update {
+                                    it.copy(
+                                        tuneDialog = it.tuneDialog.copy(
+                                            phase = TunePhase.WRONG_NOTE,
+                                            heardNoteName = heardName,
+                                            heardRawHz = est.frequencyHz,
+                                            lockedSamples = 0,
+                                            statusMessage = "Čuo sam notu $heardName ($rawHzText) — to nije C. Pritisni dirku C (Do) opet!"
+                                        )
                                     )
-                                )
+                                }
+                            }
+                        }
+                    } else {
+                        // Silence or unclear sound
+                        wrongNoteFrames = 0
+                        if (collectedCents.isNotEmpty()) {
+                            silentFramesSinceLastC++
+                            if (silentFramesSinceLastC >= 7) {
+                                val partialCt = lastPartialCents.roundToInt()
+                                val partialSign = if (partialCt > 0) "+" else ""
+                                val partialHzText = String.format(java.util.Locale.US, "%.1f Hz", lastPartialC4Hz)
+                                collectedCents.clear()
+                                silentFramesSinceLastC = 0
+                                _uiState.update {
+                                    it.copy(
+                                        tuneDialog = it.tuneDialog.copy(
+                                            phase = TunePhase.RETRY_UNSTABLE,
+                                            lockedSamples = 0,
+                                            statusMessage = "Čuo sam C ($partialHzText, $partialSign$partialCt ct), ali ton je bio prekratak. Pritisni C opet i zadrži dirku 1–2 sekunde!"
+                                        )
+                                    )
+                                }
+                            }
+                        } else {
+                            quietFramesTotal++
+                            if (quietFramesTotal == 220) {
+                                _uiState.update {
+                                    it.copy(
+                                        tuneDialog = it.tuneDialog.copy(
+                                            statusMessage = "Još ne čujem jasan ton klavira. Približi telefon klaviru i pritisni C malo jače!"
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
@@ -473,7 +631,16 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     private fun stopCalibrationListening() {
         calibrationJob?.cancel()
         calibrationJob = null
-        _uiState.update { it.copy(tuneDialog = it.tuneDialog.copy(isListening = false)) }
+        _uiState.update { state ->
+            val nextPhase = if (state.tuneDialog.phase == TunePhase.SAVED) TunePhase.SAVED else TunePhase.IDLE
+            state.copy(
+                tuneDialog = state.tuneDialog.copy(
+                    isListening = false,
+                    phase = nextPhase,
+                    liveRms = 0f
+                )
+            )
+        }
     }
 
     // ---- SHEET RESULT, PLAYBACK & SAVED NOTEBOOK ----

@@ -49,7 +49,8 @@ data class SpectralPitchFrame(
 class PianoPitchEngine(
     private val sampleRate: Int = 44100,
     private val windowSize: Int = 4096,
-    private var calibrationCents: Float = 0f
+    private var calibrationCents: Float = 0f,
+    private val widePitchTolerance: Boolean = false
 ) {
     private val fftSize = 8192
     private val halfFft = fftSize / 2
@@ -312,7 +313,8 @@ class PianoPitchEngine(
                 val expectedHz = f0 * h * sqrt(1.0 + inharmonicityB * h * h)
                 if (expectedHz > 4600.0) break
 
-                val tolHz = max(binHz * 1.15, expectedHz * 0.020)
+                val tolRatio = if (widePitchTolerance) 0.032 else 0.020
+                val tolHz = max(binHz * 1.15, expectedHz * tolRatio)
                 val loBin = max(minBin, ((expectedHz - tolHz) / binHz).toInt())
                 val hiBin = minOf(maxBin, ((expectedHz + tolHz) / binHz).toInt() + 1)
 
@@ -401,7 +403,8 @@ class PianoPitchEngine(
     }
 
     private fun findPeakBinAround(spectrum: FloatArray, targetHz: Double, minBin: Int, maxBin: Int): Int {
-        val tolHz = max(binHz * 1.5, targetHz * 0.038)
+        val tolRatio = if (widePitchTolerance) 0.052 else 0.038
+        val tolHz = max(binHz * 1.5, targetHz * tolRatio)
         val lo = max(minBin, ((targetHz - tolHz) / binHz).toInt())
         val hi = minOf(maxBin, ((targetHz + tolHz) / binHz).toInt() + 1)
         var bestK = lo

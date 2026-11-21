@@ -360,15 +360,20 @@ private fun StudioHeaderRow(
                 )
                 Column {
                     Text(
-                        text = stringResource(R.string.action_tune_c),
+                        text = if (settings.isCalibrated) "Štim sačuvan" else stringResource(R.string.action_tune_c),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (settings.isCalibrated) OnSageMintContainer else WarmInk
                     )
                     Text(
-                        text = if (settings.isCalibrated) "C4 ($sign$centsInt ct)" else "440 Hz",
+                        text = if (settings.isCalibrated) {
+                            val hzStr = String.format(java.util.Locale.US, "%.1f Hz", settings.calibratedC4Hz)
+                            "$hzStr ($sign$centsInt ct)"
+                        } else {
+                            "Standard 440 Hz"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = MutedInk
+                        color = if (settings.isCalibrated) OnSageMintContainer else MutedInk
                     )
                 }
             }

@@ -257,4 +257,27 @@ class YinPitchAndTrackerTest {
             playable.map { it.duration }
         )
     }
+
+    @Test
+    fun wideToleranceCalibratesHeavilyDetunedPiano55CentsFlat() {
+        val heavyFlatCents = -55f
+        val pcmC4 = synthesizeRealisticPianoBuffer(
+            events = listOf(Triple(60, 0.02, 0.30)),
+            totalSeconds = 0.35,
+            calibrationCents = heavyFlatCents
+        )
+        val tunerEngine = PianoPitchEngine(
+            sampleRate = sampleRate,
+            windowSize = 4096,
+            calibrationCents = 0f,
+            widePitchTolerance = true
+        )
+        val start = (0.06 * sampleRate).toInt()
+        val measured = tunerEngine.analyze(pcmC4.copyOfRange(start, start + 4096), 4096)
+        assertNotNull("Expected wide-tolerance tuner to hear -55ct C4", measured.midiNote)
+        val cal = MusicTheory.computeCalibrationCentsFromC(measured.frequencyHz)
+        assertNotNull("Expected frequency ${measured.frequencyHz}Hz to map to C calibration", cal)
+        val (detectedCents, _) = cal!!
+        assertTrue("Expected ~ -55 cents, got $detectedCents", abs(detectedCents - heavyFlatCents) < 6f)
+    }
 }

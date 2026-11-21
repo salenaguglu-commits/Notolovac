@@ -13,14 +13,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -47,16 +52,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.R
+import com.example.model.MusicTheory
+import com.example.ui.theme.CoralContainer
 import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.CreamPaper
+import com.example.ui.theme.HoneyGoldContainer
 import com.example.ui.theme.HoneyGoldTertiary
 import com.example.ui.theme.MutedInk
+import com.example.ui.theme.OnCoralContainer
+import com.example.ui.theme.OnSageMintContainer
 import com.example.ui.theme.SageMintContainer
 import com.example.ui.theme.SageMintSecondary
+import com.example.ui.theme.WarmCard
 import com.example.ui.theme.WarmCardBorder
 import com.example.ui.theme.WarmInk
 import com.example.ui.theme.WarmSurface
 import com.example.viewmodel.TuneDialogState
+import com.example.viewmodel.TunePhase
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -79,6 +91,9 @@ fun TuneCalibrationDialog(
         label = "tuneNeedle"
     )
 
+    val isWarningPhase = state.phase == TunePhase.WRONG_NOTE || state.phase == TunePhase.RETRY_UNSTABLE
+    val isSavedPhase = state.phase == TunePhase.SAVED
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(28.dp),
@@ -90,7 +105,9 @@ fun TuneCalibrationDialog(
                 .testTag("tune_calibration_dialog")
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header
@@ -99,7 +116,10 @@ fun TuneCalibrationDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.GraphicEq,
                             contentDescription = null,
@@ -115,7 +135,9 @@ fun TuneCalibrationDialog(
                     }
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.testTag("tune_close_button")
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("tune_close_button")
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
@@ -125,34 +147,58 @@ fun TuneCalibrationDialog(
                     }
                 }
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = stringResource(R.string.tune_dialog_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MutedInk,
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
-                // Visual Tuning Dial Arc
+                // 1. Unmistakable Active Saved Calibration Proof Card
+                SavedCalibrationStatusCard(state = state)
+
+                Spacer(Modifier.height(12.dp))
+
+                // 2. Live Measurement Dial + Heard Note/Hz/Cents Feedback Card
+                val dialBg = when {
+                    isSavedPhase -> SageMintContainer
+                    isWarningPhase -> CoralContainer.copy(alpha = 0.65f)
+                    state.phase == TunePhase.LOCKING_C -> HoneyGoldContainer.copy(alpha = 0.55f)
+                    else -> WarmSurface
+                }
+                val dialBorder = when {
+                    isSavedPhase -> SageMintSecondary
+                    isWarningPhase -> CoralPrimary
+                    state.phase == TunePhase.LOCKING_C -> HoneyGoldTertiary
+                    else -> WarmCardBorder
+                }
+
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = if (state.completed) SageMintContainer else WarmSurface,
-                    border = BorderStroke(1.dp, WarmCardBorder),
+                    color = dialBg,
+                    border = BorderStroke(1.5.dp, dialBorder),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        // Live "What microphone hears RIGHT NOW" pill
+                        LiveHeardNotePill(state = state)
+
+                        Spacer(Modifier.height(6.dp))
+
+                        // Visual Tuning Dial Arc (-60 ct ... 0 ct ... +60 ct)
                         Canvas(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(110.dp)
+                                .height(98.dp)
                         ) {
-                            val arcRadius = minOf(size.width * 0.42f, size.height * 0.85f)
-                            val center = Offset(size.width / 2f, size.height - 10.dp.toPx())
+                            val arcRadius = minOf(size.width * 0.40f, size.height * 0.84f)
+                            val center = Offset(size.width / 2f, size.height - 8.dp.toPx())
                             val topLeft = Offset(center.x - arcRadius, center.y - arcRadius)
                             val arcSize = Size(arcRadius * 2f, arcRadius * 2f)
 
@@ -164,10 +210,10 @@ fun TuneCalibrationDialog(
                                 useCenter = false,
                                 topLeft = topLeft,
                                 size = arcSize,
-                                style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
+                                style = Stroke(width = 11.dp.toPx(), cap = StrokeCap.Round)
                             )
 
-                            // Sweet-spot center green zone
+                            // Standard C4 center zone (0 ct)
                             drawArc(
                                 color = SageMintSecondary.copy(alpha = 0.65f),
                                 startAngle = 258f,
@@ -175,7 +221,7 @@ fun TuneCalibrationDialog(
                                 useCenter = false,
                                 topLeft = topLeft,
                                 size = arcSize,
-                                style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
+                                style = Stroke(width = 11.dp.toPx(), cap = StrokeCap.Round)
                             )
 
                             // Needle angle: -60ct -> 195 deg, 0ct -> 270 deg, +60ct -> 345 deg
@@ -185,7 +231,11 @@ fun TuneCalibrationDialog(
                             val tipY = center.y + (arcRadius - 8.dp.toPx()) * sin(angleRad).toFloat()
 
                             drawLine(
-                                color = if (state.completed) SageMintSecondary else CoralPrimary,
+                                color = when {
+                                    isSavedPhase -> SageMintSecondary
+                                    isWarningPhase -> CoralPrimary
+                                    else -> CoralPrimary
+                                },
                                 start = center,
                                 end = Offset(tipX, tipY),
                                 strokeWidth = 4.dp.toPx(),
@@ -193,132 +243,208 @@ fun TuneCalibrationDialog(
                             )
                             drawCircle(
                                 color = WarmInk,
-                                radius = 7.dp.toPx(),
+                                radius = 6.dp.toPx(),
                                 center = center
                             )
                         }
 
-                        val centsInt = state.liveCents.roundToInt()
-                        val sign = if (centsInt > 0) "+" else ""
-                        val hzFormatted = String.format(Locale.US, "%.1f Hz", state.liveHz)
+                        // Scale labels beneath arc
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            if (state.completed) {
-                                Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
-                                    contentDescription = null,
-                                    tint = SageMintSecondary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Text(
-                                text = "Tvoje C4: $hzFormatted ($sign$centsInt ct)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = WarmInk
-                            )
-                        }
-                        Text(
-                            text = "Standard: 261.6 Hz  •  Razlika se automatski uračunava",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MutedInk
-                        )
-
-                        if (state.isListening) {
-                            Spacer(Modifier.height(8.dp))
-                            val micLevel = (kotlin.math.sqrt(state.liveRms.coerceAtLeast(0f)) * 2.8f).coerceIn(0.05f, 1f)
-                            LinearProgressIndicator(
-                                progress = { micLevel },
-                                modifier = Modifier
-                                    .fillMaxWidth(0.75f)
-                                    .height(5.dp),
-                                color = SageMintSecondary,
-                                trackColor = WarmCardBorder.copy(alpha = 0.6f),
-                                strokeCap = StrokeCap.Round
-                            )
-                        }
-
-                        if (state.isListening || state.progress > 0f) {
-                            Spacer(Modifier.height(10.dp))
-                            LinearProgressIndicator(
-                                progress = { state.progress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp),
-                                color = if (state.completed) SageMintSecondary else HoneyGoldTertiary,
-                                trackColor = WarmCardBorder,
-                                strokeCap = StrokeCap.Round
-                            )
+                            Text("-60 ct", style = MaterialTheme.typography.labelSmall, color = MutedInk)
+                            Text("0 (261.6 Hz)", style = MaterialTheme.typography.labelSmall, color = SageMintSecondary, fontWeight = FontWeight.Bold)
+                            Text("+60 ct", style = MaterialTheme.typography.labelSmall, color = MutedInk)
                         }
 
                         Spacer(Modifier.height(8.dp))
+
+                        // Exact numeric Hz & +/- cents readout
+                        val centsInt = state.liveCents.roundToInt()
+                        val sign = if (centsInt > 0) "+" else ""
+                        val hzDiff = state.liveHz - MusicTheory.STANDARD_C4_HZ
+                        val hzDiffSign = if (hzDiff > 0.05) "+" else ""
+                        val hzFormatted = String.format(Locale.US, "%.1f Hz", state.liveHz)
+                        val hzDiffFormatted = String.format(Locale.US, "%s%.1f Hz", hzDiffSign, hzDiff)
+
+                        Text(
+                            text = "C4: $hzFormatted  •  $sign$centsInt ct ($hzDiffFormatted)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = WarmInk,
+                            textAlign = TextAlign.Center
+                        )
+
+                        // Live microphone input level bar while listening
+                        if (state.isListening) {
+                            Spacer(Modifier.height(8.dp))
+                            val micLevel = (kotlin.math.sqrt(state.liveRms.coerceAtLeast(0f)) * 2.8f).coerceIn(0.05f, 1f)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Mikrofon",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MutedInk
+                                )
+                                LinearProgressIndicator(
+                                    progress = { micLevel },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(6.dp),
+                                    color = SageMintSecondary,
+                                    trackColor = WarmCardBorder.copy(alpha = 0.6f),
+                                    strokeCap = StrokeCap.Round
+                                )
+                            }
+                        }
+
+                        // Sample lock progress bar (X / 7)
+                        if (state.isListening || state.phase == TunePhase.SAVED) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Potvrda ${state.lockedSamples}/${state.requiredSamples}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isSavedPhase) OnSageMintContainer else MutedInk
+                                )
+                                LinearProgressIndicator(
+                                    progress = { state.progress },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(8.dp),
+                                    color = if (isSavedPhase) SageMintSecondary else HoneyGoldTertiary,
+                                    trackColor = WarmCardBorder,
+                                    strokeCap = StrokeCap.Round
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        // Honest, actionable status / retry message
                         Text(
                             text = state.statusMessage,
                             style = MaterialTheme.typography.bodySmall,
-                            color = WarmInk,
+                            fontWeight = if (isWarningPhase || isSavedPhase) FontWeight.SemiBold else FontWeight.Normal,
+                            color = when {
+                                isWarningPhase -> OnCoralContainer
+                                isSavedPhase -> OnSageMintContainer
+                                else -> WarmInk
+                            },
                             textAlign = TextAlign.Center
                         )
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(14.dp))
 
-                // Play Reference C4 button
-                OutlinedButton(
-                    onClick = onPlayReferenceC,
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.5.dp, SageMintSecondary),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("tune_play_reference_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.VolumeUp,
-                        contentDescription = null,
-                        tint = SageMintSecondary
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.tune_play_reference),
-                        color = WarmInk,
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                // 3. Action Buttons
+                if (isSavedPhase) {
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SageMintSecondary,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("tune_done_button")
+                    ) {
+                        Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Gotovo — koristi ovaj štim", style = MaterialTheme.typography.labelLarge)
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = onToggleListen,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, SageMintSecondary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("tune_listen_button")
+                    ) {
+                        Icon(imageVector = Icons.Filled.Mic, contentDescription = null, tint = SageMintSecondary)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Izmeri C ponovo", color = WarmInk, style = MaterialTheme.typography.labelLarge)
+                    }
+                } else {
+                    Button(
+                        onClick = onToggleListen,
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (state.isListening) CoralPrimary else SageMintSecondary,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("tune_listen_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (state.isListening) {
+                                "Zaustavi slušanje"
+                            } else if (state.savedIsCalibrated) {
+                                "Izmeri moje C ponovo"
+                            } else {
+                                stringResource(R.string.tune_start_listening)
+                            },
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = onPlayReferenceC,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.5.dp, WarmCardBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("tune_play_reference_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = null,
+                            tint = SageMintSecondary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = stringResource(R.string.tune_play_reference),
+                            color = WarmInk,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
 
-                Spacer(Modifier.height(10.dp))
-
-                // Start/Stop listening for child's C note
-                Button(
-                    onClick = onToggleListen,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (state.isListening) CoralPrimary else SageMintSecondary,
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("tune_listen_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Mic,
-                        contentDescription = null
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = if (state.isListening) "Zaustavi slušanje" else stringResource(R.string.tune_start_listening),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
 
                 TextButton(
                     onClick = onResetStandard,
-                    modifier = Modifier.testTag("tune_reset_button")
+                    modifier = Modifier
+                        .height(48.dp)
+                        .testTag("tune_reset_button")
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Refresh,
@@ -337,3 +463,128 @@ fun TuneCalibrationDialog(
         }
     }
 }
+
+@Composable
+private fun SavedCalibrationStatusCard(state: TuneDialogState) {
+    val savedCentsInt = state.savedCents.roundToInt()
+    val sign = if (savedCentsInt > 0) "+" else ""
+    val c4Text = String.format(Locale.US, "%.1f Hz", state.savedC4Hz)
+    val a4Text = String.format(Locale.US, "%.1f Hz", state.savedA4Hz)
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (state.savedIsCalibrated) SageMintContainer else WarmCard,
+        border = BorderStroke(
+            width = 1.5.dp,
+            color = if (state.savedIsCalibrated) SageMintSecondary else WarmCardBorder
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("saved_calibration_status_card")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = if (state.savedIsCalibrated) Icons.Filled.CheckCircle else Icons.Filled.Tune,
+                contentDescription = null,
+                tint = if (state.savedIsCalibrated) SageMintSecondary else MutedInk,
+                modifier = Modifier.size(24.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = if (state.savedIsCalibrated) {
+                        "Sačuvan i aktivan štim tvog klavira"
+                    } else {
+                        "Aktivan standardni štim (nije kalibrisano)"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (state.savedIsCalibrated) OnSageMintContainer else WarmInk
+                )
+                Text(
+                    text = "C4 = $c4Text ($sign$savedCentsInt ct)  •  A4 = $a4Text",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.savedIsCalibrated) OnSageMintContainer else MutedInk
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveHeardNotePill(state: TuneDialogState) {
+    val rawHzText = if (state.heardRawHz > 0.0) {
+        String.format(Locale.US, "%.1f Hz", state.heardRawHz)
+    } else {
+        null
+    }
+
+    val (bgColor, textColor, icon, text) = when (state.phase) {
+        TunePhase.SAVED -> Quad(
+            SageMintSecondary,
+            Color.White,
+            Icons.Filled.CheckCircle,
+            "Sačuvano: ${state.heardNoteName ?: "Do (C4)"}"
+        )
+        TunePhase.WRONG_NOTE -> Quad(
+            CoralPrimary,
+            Color.White,
+            Icons.Filled.ErrorOutline,
+            "Čuo sam: ${state.heardNoteName ?: "?"} (${rawHzText ?: ""}) — nije C!"
+        )
+        TunePhase.RETRY_UNSTABLE -> Quad(
+            CoralPrimary,
+            Color.White,
+            Icons.Filled.ErrorOutline,
+            "Pritisni C opet (${state.heardNoteName ?: "nestabilan ton"})"
+        )
+        TunePhase.LOCKING_C -> Quad(
+            HoneyGoldTertiary,
+            WarmInk,
+            Icons.Filled.MusicNote,
+            "Čujem: ${state.heardNoteName ?: "C"} (${rawHzText ?: ""})"
+        )
+        TunePhase.LISTENING -> Quad(
+            WarmCard,
+            MutedInk,
+            Icons.Filled.Mic,
+            "Čekam zvuk klavira..."
+        )
+        TunePhase.IDLE -> Quad(
+            WarmCard,
+            MutedInk,
+            Icons.Filled.Tune,
+            "Spremno za merenje C"
+        )
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = bgColor,
+        modifier = Modifier.testTag("tune_live_heard_pill")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = textColor,
+                modifier = Modifier.size(16.dp)
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = textColor
+            )
+        }
+    }
+}
+
+private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)

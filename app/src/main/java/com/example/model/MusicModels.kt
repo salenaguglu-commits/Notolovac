@@ -88,7 +88,7 @@ object MusicTheory {
     }
 
     /**
-     * Computes how many cents a played C note (in any octave C2..C6) deviates from standard C.
+     * Computes how many cents a played C note (in any octave C3..C6) deviates from standard C.
      */
     fun computeCalibrationCentsFromC(measuredHz: Double): Pair<Float, Double>? {
         if (measuredHz < 115.0 || measuredHz > 1200.0) return null
@@ -101,6 +101,17 @@ object MusicTheory {
         if (kotlin.math.abs(centsDiff) > 80f) return null
         val normalizedC4Hz = STANDARD_C4_HZ * 2.0.pow(centsDiff / 1200.0)
         return centsDiff to normalizedC4Hz
+    }
+
+    fun nearestCMidi(measuredHz: Double): Int {
+        if (measuredHz <= 0.0) return 60
+        val midiFloat = 69.0 + 12.0 * (ln(measuredHz / STANDARD_A4_HZ) / ln(2.0))
+        val cCandidates = intArrayOf(48, 60, 72, 84)
+        return cCandidates.minByOrNull { kotlin.math.abs(midiFloat - it) } ?: 60
+    }
+
+    fun equivalentA4Hz(calibrationCents: Float): Double {
+        return STANDARD_A4_HZ * 2.0.pow(calibrationCents / 1200.0)
     }
 
     fun midiToSolfege(midi: Int): String {
