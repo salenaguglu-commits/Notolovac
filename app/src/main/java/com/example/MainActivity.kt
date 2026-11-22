@@ -304,9 +304,10 @@ fun NotolovacApp(
         }
     }
 
-    // Tune / C-Calibration Modal Dialog
+    // Tune / Piano Calibration Modal Dialog
     TuneCalibrationDialog(
         state = uiState.tuneDialog,
+        onSelectMode = { viewModel.selectCalibrationMode(it) },
         onPlayReferenceC = { viewModel.playReferenceC() },
         onToggleListen = {
             if (uiState.tuneDialog.isListening) {

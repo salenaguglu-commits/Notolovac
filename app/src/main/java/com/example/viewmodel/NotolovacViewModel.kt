@@ -6,8 +6,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.AudioCaptureEngine
 import com.example.audio.MetronomeEngine
+import com.example.audio.PianoCalibrationProfile
 import com.example.audio.PianoNoteTracker
 import com.example.audio.PianoSynthesizer
+import com.example.audio.ScaleCalibrationEngine
+import com.example.audio.ScaleCalibrationPhase
+import com.example.audio.ScaleCalibrationSnapshot
 import com.example.data.NotolovacDatabase
 import com.example.data.SavedSong
 import com.example.data.SongRepository
@@ -35,6 +39,11 @@ enum class AppTab {
     NOTEBOOK
 }
 
+enum class CalibrationMode {
+    QUICK_C,
+    FULL_SCALE
+}
+
 enum class TunePhase {
     IDLE,
     LISTENING,
@@ -46,9 +55,10 @@ enum class TunePhase {
 
 data class TuneDialogState(
     val isOpen: Boolean = false,
+    val mode: CalibrationMode = CalibrationMode.FULL_SCALE,
     val phase: TunePhase = TunePhase.IDLE,
     val isListening: Boolean = false,
-    // Live microphone detection readout
+    // Live microphone detection readout (Quick C mode)
     val heardNoteName: String? = null,
     val heardRawHz: Double = 0.0,
     val liveHz: Double = MusicTheory.STANDARD_C4_HZ,
@@ -57,11 +67,14 @@ data class TuneDialogState(
     val lockedSamples: Int = 0,
     val requiredSamples: Int = 7,
     val statusMessage: String = "Pritisni „Slušaj moje C“ pa odsviraj srednje C (Do) na klaviru.",
+    // Guided C4..C5 scale calibration state
+    val scaleSnapshot: ScaleCalibrationSnapshot = ScaleCalibrationSnapshot(),
     // Persisted active calibration proof
     val savedIsCalibrated: Boolean = false,
     val savedC4Hz: Double = MusicTheory.STANDARD_C4_HZ,
     val savedCents: Float = 0f,
-    val savedA4Hz: Double = MusicTheory.STANDARD_A4_HZ
+    val savedA4Hz: Double = MusicTheory.STANDARD_A4_HZ,
+    val savedProfile: PianoCalibrationProfile = PianoCalibrationProfile.STANDARD
 ) {
     val progress: Float
         get() = (lockedSamples.toFloat() / requiredSamples.coerceAtLeast(1)).coerceIn(0f, 1f)
@@ -235,7 +248,8 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         stopCalibrationListening()
 
         val currentSettings = settings.value
-        val tracker = PianoNoteTracker()
+        val activeProfile = currentSettings.calibrationProfile
+        val tracker = PianoNoteTracker(calibrationProfile = activeProfile)
         activeTracker = tracker
 
         val useMetronome = _uiState.value.metronomeRunning
@@ -267,7 +281,10 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
 
         recordingJob?.cancel()
         recordingJob = viewModelScope.launch {
-            audioEngine.pitchFramesFlow(calibrationCents = currentSettings.calibrationCents)
+            audioEngine.pitchFramesFlow(
+                calibrationCents = currentSettings.calibrationCents,
+                calibrationProfile = activeProfile
+            )
                 .catch { err ->
                     _uiState.update {
                         it.copy(
@@ -357,13 +374,20 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         stopPlayback()
         stopMetronomeLoop()
         val s = settings.value
+        val profile = s.calibrationProfile
         val savedC4 = if (s.isCalibrated) s.calibratedC4Hz.toDouble() else MusicTheory.STANDARD_C4_HZ
         val savedCents = if (s.isCalibrated) s.calibrationCents else 0f
         val savedA4 = MusicTheory.equivalentA4Hz(savedCents)
+        val initialMode = if (s.isCalibrated && !profile.isScaleCalibrated) {
+            CalibrationMode.QUICK_C
+        } else {
+            CalibrationMode.FULL_SCALE
+        }
         _uiState.update {
             it.copy(
                 tuneDialog = TuneDialogState(
                     isOpen = true,
+                    mode = initialMode,
                     phase = TunePhase.IDLE,
                     isListening = false,
                     heardNoteName = null,
@@ -377,10 +401,31 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     } else {
                         "Pritisni „Slušaj moje C“, zatim pritisni i zadrži srednje C (Do) 1–2 sekunde."
                     },
+                    scaleSnapshot = ScaleCalibrationSnapshot(),
                     savedIsCalibrated = s.isCalibrated,
                     savedC4Hz = savedC4,
                     savedCents = savedCents,
-                    savedA4Hz = savedA4
+                    savedA4Hz = savedA4,
+                    savedProfile = profile
+                )
+            )
+        }
+    }
+
+    fun selectCalibrationMode(mode: CalibrationMode) {
+        if (_uiState.value.tuneDialog.mode == mode) return
+        stopCalibrationListening()
+        _uiState.update { state ->
+            state.copy(
+                tuneDialog = state.tuneDialog.copy(
+                    mode = mode,
+                    phase = TunePhase.IDLE,
+                    isListening = false,
+                    heardNoteName = null,
+                    heardRawHz = 0.0,
+                    liveRms = 0f,
+                    lockedSamples = 0,
+                    scaleSnapshot = ScaleCalibrationSnapshot()
                 )
             )
         }
@@ -398,11 +443,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     fun resetCalibrationToStandard() {
         stopCalibrationListening()
         viewModelScope.launch {
-            preferencesRepository.saveCalibration(
-                cents = 0f,
-                c4Hz = MusicTheory.STANDARD_C4_HZ.toFloat(),
-                isCalibrated = false
-            )
+            preferencesRepository.saveCalibrationProfile(PianoCalibrationProfile.STANDARD)
             _uiState.update {
                 it.copy(
                     tuneDialog = it.tuneDialog.copy(
@@ -413,10 +454,12 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                         liveCents = 0f,
                         liveHz = MusicTheory.STANDARD_C4_HZ,
                         lockedSamples = 0,
+                        scaleSnapshot = ScaleCalibrationSnapshot(),
                         savedIsCalibrated = false,
                         savedC4Hz = MusicTheory.STANDARD_C4_HZ,
                         savedCents = 0f,
                         savedA4Hz = MusicTheory.STANDARD_A4_HZ,
+                        savedProfile = PianoCalibrationProfile.STANDARD,
                         statusMessage = "Vraćeno na standardni štim (C4 = 261.6 Hz, A4 = 440.0 Hz)."
                     ),
                     snackbarMessage = "Štimovanje vraćeno na standardnih 440 Hz."
@@ -430,6 +473,85 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
             stopCalibrationListening()
             return
         }
+        if (_uiState.value.tuneDialog.mode == CalibrationMode.FULL_SCALE) {
+            startScaleCalibrationListening()
+            return
+        }
+        startQuickCCalibrationListening()
+    }
+
+    private fun startScaleCalibrationListening() {
+        val engine = ScaleCalibrationEngine()
+        val initialSnap = engine.start()
+
+        _uiState.update {
+            it.copy(
+                tuneDialog = it.tuneDialog.copy(
+                    isListening = true,
+                    phase = TunePhase.LISTENING,
+                    liveRms = 0f,
+                    scaleSnapshot = initialSnap
+                )
+            )
+        }
+
+        calibrationJob?.cancel()
+        calibrationJob = viewModelScope.launch {
+            audioEngine.pitchFramesFlow(calibrationCents = 0f, widePitchTolerance = true)
+                .catch { err ->
+                    _uiState.update {
+                        it.copy(
+                            tuneDialog = it.tuneDialog.copy(
+                                isListening = false,
+                                phase = TunePhase.IDLE,
+                                liveRms = 0f,
+                                scaleSnapshot = ScaleCalibrationSnapshot(
+                                    statusMessage = err.message ?: "Mikrofon nije dostupan."
+                                )
+                            )
+                        )
+                    }
+                }
+                .collect { frame ->
+                    val snap = engine.processFrame(frame.spectral)
+                    if (snap.phase == ScaleCalibrationPhase.COMPLETED && snap.resultingProfile != null) {
+                        val profile = snap.resultingProfile
+                        preferencesRepository.saveCalibrationProfile(profile)
+                        val ct = profile.globalCents.roundToInt()
+                        val sign = if (ct > 0) "+" else ""
+                        val c4Str = String.format(java.util.Locale.US, "%.1f Hz", profile.calibratedC4Hz)
+                        _uiState.update {
+                            it.copy(
+                                tuneDialog = it.tuneDialog.copy(
+                                    isListening = false,
+                                    phase = TunePhase.SAVED,
+                                    liveRms = 0f,
+                                    scaleSnapshot = snap,
+                                    savedIsCalibrated = true,
+                                    savedC4Hz = profile.calibratedC4Hz.toDouble(),
+                                    savedCents = profile.globalCents,
+                                    savedA4Hz = profile.equivalentA4Hz,
+                                    savedProfile = profile
+                                ),
+                                snackbarMessage = "Sačuvan profil klavira (Skala Do–Do): C4 = $c4Str ($sign$ct ct)"
+                            )
+                        }
+                        calibrationJob?.cancel()
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                tuneDialog = it.tuneDialog.copy(
+                                    liveRms = snap.liveRms,
+                                    scaleSnapshot = snap
+                                )
+                            )
+                        }
+                    }
+                }
+        }
+    }
+
+    private fun startQuickCCalibrationListening() {
         val collectedCents = mutableListOf<Float>()
         val targetSamples = 7
         var silentFramesSinceLastC = 0
@@ -541,11 +663,12 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                         Math.pow(2.0, medianCents / 1200.0)).toFloat()
                                     val equivalentA4 = MusicTheory.equivalentA4Hz(medianCents)
 
-                                    preferencesRepository.saveCalibration(
+                                    val quickProfile = PianoCalibrationProfile.fromQuickC(
                                         cents = medianCents,
                                         c4Hz = calibratedC4,
                                         isCalibrated = true
                                     )
+                                    preferencesRepository.saveCalibrationProfile(quickProfile)
 
                                     val finalCt = medianCents.roundToInt()
                                     val finalSign = if (finalCt > 0) "+" else ""
@@ -566,6 +689,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                                 savedC4Hz = calibratedC4.toDouble(),
                                                 savedCents = medianCents,
                                                 savedA4Hz = equivalentA4,
+                                                savedProfile = quickProfile,
                                                 statusMessage = "Štim tvog klavira je sačuvan! C4 = $finalC4Text ($finalSign$finalCt ct • A4 ≈ $finalA4Text). Sve note se od sada prepoznaju po ovom štimu."
                                             ),
                                             snackbarMessage = "Sačuvan štim klavira: C4 = $finalC4Text ($finalSign$finalCt ct)"
@@ -645,11 +769,17 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         calibrationJob = null
         _uiState.update { state ->
             val nextPhase = if (state.tuneDialog.phase == TunePhase.SAVED) TunePhase.SAVED else TunePhase.IDLE
+            val nextScaleSnap = if (state.tuneDialog.scaleSnapshot.phase == ScaleCalibrationPhase.COMPLETED) {
+                state.tuneDialog.scaleSnapshot
+            } else {
+                ScaleCalibrationSnapshot()
+            }
             state.copy(
                 tuneDialog = state.tuneDialog.copy(
                     isListening = false,
                     phase = nextPhase,
-                    liveRms = 0f
+                    liveRms = 0f,
+                    scaleSnapshot = nextScaleSnap
                 )
             )
         }

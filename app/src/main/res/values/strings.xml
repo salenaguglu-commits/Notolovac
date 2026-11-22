@@ -19,11 +19,17 @@
     <string name="permission_mic_allow">Dozvoli mikrofon</string>
     <string name="empty_notebook_title">Tvoja muzička sveska je još prazna!</string>
     <string name="empty_notebook_body">Pritisni „Slušaj sada“, odsviraj svoju prvu melodiju na klaviru i sačuvaj je ovde.</string>
-    <string name="tune_dialog_title">Prilagodi tvom klaviru (C)</string>
-    <string name="tune_dialog_subtitle">Ne moraš da štimuješ klavir — odsviraj srednje C (Do) i zadrži 2 sekunde da Notolovac izmeri tačnu visinu tvog klavira u Hz i prilagodi se njemu.</string>
+    <string name="tune_dialog_title">Kalibracija tvog klavira</string>
+    <string name="tune_dialog_subtitle">Prilagodi Notolovac tačnom štimu, dinamici i sobi tvog klavira.</string>
+    <string name="tune_mode_quick_c">Brzi štim (Do)</string>
+    <string name="tune_mode_full_scale">Skala Do–Do</string>
     <string name="tune_play_reference">Poslušaj primer C</string>
     <string name="tune_start_listening">Slušaj moje C</string>
     <string name="tune_reset_standard">Vrati na 440 Hz</string>
+    <string name="scale_cal_start">Pokreni kalibraciju skale</string>
+    <string name="scale_cal_stop">Zaustavi kalibraciju</string>
+    <string name="scale_cal_retry">Kalibriši skalu ponovo</string>
+    <string name="scale_cal_use_profile">Gotovo — koristi ovaj profil</string>
     <string name="share_sheet_chooser">Podeli notni zapis</string>
     <string name="default_song_title">Moja nova melodija</string>
 </resources>

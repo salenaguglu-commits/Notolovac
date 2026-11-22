@@ -36,7 +36,9 @@ data class QuantizedTranscription(
  *   2) While another note is ringing: a strong positive delta-spectrum onset at a new key
  *      (for legato) or a sharp energy re-jump on the same key (for repeated notes like Do-Do).
  */
-class PianoNoteTracker {
+class PianoNoteTracker(
+    private val calibrationProfile: PianoCalibrationProfile? = null
+) {
     private val finalizedNotes = mutableListOf<DetectedNote>()
     private val finalizedEvidences = mutableListOf<NoteAcousticEvidence>()
     private var nextNoteId = 1L
@@ -53,9 +55,11 @@ class PianoNoteTracker {
     private var activeStartedClipped: Boolean = false
     private var activeFrameCount: Int = 0
     private var activePeakEnergy: Float = 0f
+    private var activeMinEnergySincePeak: Float = 0f
     private var activePeakRms: Float = 0f
     private var activePrevEnergy: Float = 0f
     private var lowEnergyFrames: Int = 0
+    private var dampedFrames: Int = 0
     private val activeCandidateScores = mutableMapOf<Int, Float>()
     private var recentClippingFrames: Int = 0
 
@@ -65,10 +69,15 @@ class PianoNoteTracker {
     private var pendingAttackCount: Int = 0
 
     // Adaptive ambient noise & post-release reverb guard
-    private var smoothedFloorRms: Float = 0.0025f
+    private var smoothedFloorRms: Float = if (calibrationProfile?.isScaleCalibrated == true) {
+        calibrationProfile.ambientNoiseRms.coerceIn(0.0015f, 0.015f)
+    } else {
+        0.0025f
+    }
     private var prevRms: Float = 0f
     private var postReleaseDecayGuardMs: Long = 0L
     private var lastReleasedMidi: Int? = null
+    private var lastReleasedPeakRms: Float = 0f
     private var lastNoteStartMs: Long = 0L
 
     // Minimum duration for a genuine piano note
@@ -93,18 +102,25 @@ class PianoNoteTracker {
         activeStartedClipped = false
         activeFrameCount = 0
         activePeakEnergy = 0f
+        activeMinEnergySincePeak = 0f
         activePeakRms = 0f
         activePrevEnergy = 0f
         lowEnergyFrames = 0
+        dampedFrames = 0
         activeCandidateScores.clear()
         recentClippingFrames = 0
         pendingAttackMidi = null
         pendingAttackStartMs = 0L
         pendingAttackCount = 0
-        smoothedFloorRms = 0.0025f
+        smoothedFloorRms = if (calibrationProfile?.isScaleCalibrated == true) {
+            calibrationProfile.ambientNoiseRms.coerceIn(0.0015f, 0.015f)
+        } else {
+            0.0025f
+        }
         prevRms = 0f
         postReleaseDecayGuardMs = 0L
         lastReleasedMidi = null
+        lastReleasedPeakRms = 0f
         lastNoteStartMs = 0L
     }
 
@@ -120,7 +136,16 @@ class PianoNoteTracker {
         if (rms < 0.010f && frame.midiNote == null && activeMidi == null) {
             smoothedFloorRms = smoothedFloorRms * 0.94f + rms * 0.06f
         }
-        val attackRmsGate = (smoothedFloorRms * 2.4f).coerceIn(0.0045f, 0.022f)
+        val baseAttackGate = (smoothedFloorRms * 2.4f).coerceIn(0.0045f, 0.022f)
+        val attackRmsGate = if (calibrationProfile?.isScaleCalibrated == true) {
+            val profileGate = max(
+                calibrationProfile.ambientNoiseRms * 2.5f,
+                calibrationProfile.medianStrikeRms * 0.14f
+            )
+            max(baseAttackGate, profileGate).coerceIn(0.0045f, 0.032f)
+        } else {
+            baseAttackGate
+        }
         val releaseRmsGate = (attackRmsGate * 0.55f).coerceAtLeast(0.0025f)
 
         val current = activeMidi
@@ -133,12 +158,18 @@ class PianoNoteTracker {
             val inDecayGuard = timestampMs < postReleaseDecayGuardMs
             val isSameAsJustReleased = candidate != null && candidate == lastReleasedMidi
             val isFreshAttack = if (isSameAsJustReleased) {
-                frame.isOnset || (frame.onsetMidiNote == candidate && frame.onsetConfidence >= 0.55f && rms > prevRms * 1.30f)
+                val strongEnoughForRestrike = rms >= lastReleasedPeakRms * 0.36f
+                strongEnoughForRestrike && (
+                    frame.isOnset ||
+                        (frame.onsetMidiNote == candidate && frame.onsetConfidence >= 0.58f && rms > prevRms * 1.38f)
+                    )
             } else {
                 frame.isOnset || (rms > prevRms * 1.12f) || (frame.onsetMidiNote != null && frame.onsetConfidence >= 0.48f)
             }
 
-            if (candidate != null && rms >= attackRmsGate && (!inDecayGuard || isFreshAttack)) {
+            val alreadyConfirming = candidate != null && pendingAttackMidi == candidate && pendingAttackCount >= 1
+
+            if (candidate != null && rms >= attackRmsGate && (!inDecayGuard || isFreshAttack || alreadyConfirming)) {
                 if (pendingAttackMidi == candidate) {
                     pendingAttackCount++
                 } else {
@@ -186,11 +217,17 @@ class PianoNoteTracker {
                 rawOnsetMidi
             }
 
+            val isPlungingDecay = prevRms > 0.005f && rms < prevRms * 0.86f
+            val newKeyBeatsDecaying = onsetMidi != null &&
+                frame.energyForMidi(onsetMidi) >= lockedEnergy * 0.75f &&
+                frame.onsetConfidence >= 0.62f
+
             val strongNewKeyOnset = onsetMidi != null &&
                 onsetMidi != current &&
                 onsetMidi in MusicTheory.MIN_PIANO_MIDI..MusicTheory.MAX_PIANO_MIDI &&
                 frame.onsetConfidence >= 0.46f &&
                 (frame.isOnset || frame.onsetConfidence >= 0.58f) &&
+                (!isPlungingDecay || newKeyBeatsDecaying) &&
                 rms >= attackRmsGate &&
                 timeSinceStart >= minNewNoteSwitchMs
 
@@ -198,12 +235,20 @@ class PianoNoteTracker {
             val validNewKeyOnset = strongNewKeyOnset &&
                 (onsetMidi != current - 12 || (frame.isOnset && frame.onsetConfidence >= 0.62f))
 
-            // Same-key restrike MUST have a genuine global hammer onset (frame.isOnset),
-            // so slow unison-string vibrato/beating swells during sustain NEVER split a held note!
+            // Same-key restrike MUST be a genuine fresh hammer strike — NOT a unison-string beating
+            // swell or Android microphone AGC recovery during sustain!
+            // Scales with the user's measured piano beatingGuardFactor when scale-calibrated.
+            val beatGuard = calibrationProfile?.beatingGuardFactor?.coerceIn(1.0f, 1.38f) ?: 1.0f
+            val prevJumpRatio = 1.38f * kotlin.math.sqrt(beatGuard)
+            val valleyJumpRatio = 1.75f * beatGuard
             val sameKeyRestrike = frame.isOnset &&
-                lockedDeltaRatio >= 0.28f &&
+                lockedDeltaRatio >= 0.32f &&
                 (onsetMidi == current || frame.midiNote == current) &&
-                lockedEnergy > activePrevEnergy * 1.50f &&
+                lockedEnergy > activePrevEnergy * prevJumpRatio &&
+                lockedEnergy > activeMinEnergySincePeak * valleyJumpRatio &&
+                lockedEnergy >= activePeakEnergy * 0.32f &&
+                rms >= activePeakRms * 0.32f &&
+                rms > prevRms * 1.18f &&
                 rms >= attackRmsGate &&
                 timeSinceStart >= minSameNoteRearticulationMs &&
                 (timestampMs - lastNoteStartMs) >= minSameNoteRearticulationMs
@@ -275,9 +320,9 @@ class PianoNoteTracker {
 
                 // 2. Track whether the locked note is still ringing OR has been damped / faded out
                 // Note: We NEVER switch pitch here during fade or vibrato! We only decide keep vs release.
-                val sharpDamperDrop = activePrevEnergy > 1.2f &&
-                    trackedEnergy < activePrevEnergy * 0.30f &&
+                val isDampedFrame = activePrevEnergy > 1.2f &&
                     trackedEnergy < activePeakEnergy * 0.14f &&
+                    (trackedEnergy < activePrevEnergy * 0.35f || dampedFrames > 0) &&
                     timeSinceStart > 140L
 
                 // Do NOT prematurely release a held note while its RMS is still clearly above ambient
@@ -286,24 +331,34 @@ class PianoNoteTracker {
                     (trackedEnergy < 0.28f && rms < attackRmsGate * 1.15f) ||
                     (activePeakEnergy > 1.0f && trackedEnergy < activePeakEnergy * 0.025f && rms < attackRmsGate * 1.25f)
 
-                if (sharpDamperDrop) {
-                    lastReleasedMidi = trackedMidi
-                    commitActiveNote(timestampMs)
-                    postReleaseDecayGuardMs = timestampMs + 320L
+                if (isDampedFrame) {
+                    dampedFrames++
+                    if (dampedFrames >= 2) {
+                        lastReleasedMidi = trackedMidi
+                        lastReleasedPeakRms = activePeakRms
+                        commitActiveNote(timestampMs)
+                        postReleaseDecayGuardMs = timestampMs + 420L
+                    }
                 } else if (fadedOut) {
+                    dampedFrames = 0
                     lowEnergyFrames++
                     if (lowEnergyFrames >= releaseFramesRequired) {
                         lastReleasedMidi = trackedMidi
+                        lastReleasedPeakRms = activePeakRms
                         commitActiveNote(activeLastSeenMs)
-                        postReleaseDecayGuardMs = timestampMs + 420L
+                        postReleaseDecayGuardMs = timestampMs + 480L
                     }
                 } else {
+                    dampedFrames = 0
                     lowEnergyFrames = 0
                     activeLastSeenMs = timestampMs
                     activeConfidenceSum += max(frame.confidence, 0.5f)
                     if (frame.confidence > activePeakConfidence) activePeakConfidence = frame.confidence
                     if (frame.clippingRatio > activeMaxClippingRatio) activeMaxClippingRatio = frame.clippingRatio
                     activeFrameCount++
+                }
+                if (trackedEnergy < activeMinEnergySincePeak) {
+                    activeMinEnergySincePeak = trackedEnergy
                 }
                 activePrevEnergy = trackedEnergy
             }
@@ -381,9 +436,11 @@ class PianoNoteTracker {
         activeStartedClipped = frame.clippingRatio >= 0.015f
         activeFrameCount = 1
         activePeakEnergy = energy
+        activeMinEnergySincePeak = energy
         activePeakRms = rms
         activePrevEnergy = energy
         lowEnergyFrames = 0
+        dampedFrames = 0
         lastNoteStartMs = timestampMs
         activeCandidateScores.clear()
         activeCandidateScores[midi] = max(confidence, 0.5f)

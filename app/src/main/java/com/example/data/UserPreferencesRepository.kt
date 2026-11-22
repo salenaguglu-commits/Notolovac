@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.audio.PianoCalibrationProfile
 import com.example.model.MusicTheory
 import com.example.model.NoteLabelMode
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +23,7 @@ data class UserSettings(
     val calibrationCents: Float = 0f,
     val calibratedC4Hz: Float = MusicTheory.STANDARD_C4_HZ.toFloat(),
     val isCalibrated: Boolean = false,
+    val calibrationProfile: PianoCalibrationProfile = PianoCalibrationProfile.STANDARD,
     val noteLabelMode: NoteLabelMode = NoteLabelMode.SOLFEGE,
     val metronomeBpm: Int = 90,
     val metronomeEnabled: Boolean = false,
@@ -34,6 +36,7 @@ class UserPreferencesRepository(private val context: Context) {
         val CALIBRATION_CENTS = floatPreferencesKey("calibration_cents")
         val CALIBRATED_C4_HZ = floatPreferencesKey("calibrated_c4_hz")
         val IS_CALIBRATED = booleanPreferencesKey("is_calibrated")
+        val PIANO_CALIBRATION_PROFILE = stringPreferencesKey("piano_calibration_profile")
         val NOTE_LABEL_MODE = stringPreferencesKey("note_label_mode")
         val METRONOME_BPM = intPreferencesKey("metronome_bpm")
         val METRONOME_ENABLED = booleanPreferencesKey("metronome_enabled")
@@ -41,10 +44,20 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     val settingsFlow: Flow<UserSettings> = context.notolovacDataStore.data.map { prefs ->
+        val cents = prefs[Keys.CALIBRATION_CENTS] ?: 0f
+        val c4Hz = prefs[Keys.CALIBRATED_C4_HZ] ?: MusicTheory.STANDARD_C4_HZ.toFloat()
+        val isCal = prefs[Keys.IS_CALIBRATED] ?: false
+        val profile = PianoCalibrationProfile.deserialize(
+            raw = prefs[Keys.PIANO_CALIBRATION_PROFILE],
+            fallbackCents = cents,
+            fallbackC4Hz = c4Hz,
+            fallbackIsCalibrated = isCal
+        )
         UserSettings(
-            calibrationCents = prefs[Keys.CALIBRATION_CENTS] ?: 0f,
-            calibratedC4Hz = prefs[Keys.CALIBRATED_C4_HZ] ?: MusicTheory.STANDARD_C4_HZ.toFloat(),
-            isCalibrated = prefs[Keys.IS_CALIBRATED] ?: false,
+            calibrationCents = cents,
+            calibratedC4Hz = c4Hz,
+            isCalibrated = isCal,
+            calibrationProfile = profile,
             noteLabelMode = NoteLabelMode.fromKey(prefs[Keys.NOTE_LABEL_MODE]),
             metronomeBpm = (prefs[Keys.METRONOME_BPM] ?: 90).coerceIn(60, 140),
             metronomeEnabled = prefs[Keys.METRONOME_ENABLED] ?: false,
@@ -53,10 +66,16 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     suspend fun saveCalibration(cents: Float, c4Hz: Float, isCalibrated: Boolean) {
+        val profile = PianoCalibrationProfile.fromQuickC(cents, c4Hz, isCalibrated)
+        saveCalibrationProfile(profile)
+    }
+
+    suspend fun saveCalibrationProfile(profile: PianoCalibrationProfile) {
         context.notolovacDataStore.edit { prefs ->
-            prefs[Keys.CALIBRATION_CENTS] = cents
-            prefs[Keys.CALIBRATED_C4_HZ] = c4Hz
-            prefs[Keys.IS_CALIBRATED] = isCalibrated
+            prefs[Keys.CALIBRATION_CENTS] = profile.globalCents
+            prefs[Keys.CALIBRATED_C4_HZ] = profile.calibratedC4Hz
+            prefs[Keys.IS_CALIBRATED] = profile.isCalibrated
+            prefs[Keys.PIANO_CALIBRATION_PROFILE] = profile.serialize()
         }
     }
 

@@ -380,7 +380,11 @@ private fun StudioHeaderRow(
                 )
                 Column {
                     Text(
-                        text = if (settings.isCalibrated) "Štim sačuvan" else stringResource(R.string.action_tune_c),
+                        text = when {
+                            settings.calibrationProfile.isScaleCalibrated -> "Profil klavira"
+                            settings.isCalibrated -> "Štim sačuvan"
+                            else -> stringResource(R.string.action_tune_c)
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = if (settings.isCalibrated) OnSageMintContainer else WarmInk

@@ -29,7 +29,8 @@ class AudioCaptureEngine(
     @SuppressLint("MissingPermission")
     fun pitchFramesFlow(
         calibrationCents: Float = 0f,
-        widePitchTolerance: Boolean = false
+        widePitchTolerance: Boolean = false,
+        calibrationProfile: PianoCalibrationProfile? = null
     ): Flow<AudioPitchFrame> = flow {
         val (audioRecord, actualSampleRate) = createAudioRecord()
             ?: throw IllegalStateException("Mikrofon trenutno nije dostupan.")
@@ -38,7 +39,8 @@ class AudioCaptureEngine(
             sampleRate = actualSampleRate,
             windowSize = frameSize,
             calibrationCents = calibrationCents,
-            widePitchTolerance = widePitchTolerance
+            widePitchTolerance = widePitchTolerance,
+            calibrationProfile = calibrationProfile
         )
         val analysisWindow = ShortArray(frameSize)
         val hopBuffer = ShortArray(hopSize)

@@ -185,4 +185,80 @@ class MusicalHarmonyAndClippingTest {
         )
         assertEquals("C-dur", result.detectedKey?.serbianName)
     }
+
+    @Test
+    fun cMajorScaleWithDeepUnisonBeatingNeverSplitsDoOrReIntoDuplicates() {
+        val sampleRate = 44100
+        val beat = 60.0 / 88.0 // 88 BPM (~682 ms/beat, matching the user's real recording)
+        val scale = listOf(60, 62, 64, 65, 67, 69, 71, 72) // Do Re Mi Fa Sol La Si Do
+        val totalSeconds = 7.2
+        val totalSamples = (totalSeconds * sampleRate).toInt()
+        val mix = DoubleArray(totalSamples)
+        val twoPi = 2.0 * PI
+        val inharmonicityB = 0.00014
+
+        scale.forEachIndexed { idx, midi ->
+            val startSec = 0.25 + idx * beat
+            val durSec = if (idx == scale.lastIndex) beat * 1.85 else beat * 0.88
+            val f0 = MusicTheory.midiToFrequency(midi, 0f)
+            val startIdx = (startSec * sampleRate).toInt()
+            val activeLen = (durSec * sampleRate).toInt()
+            val tailLen = (0.14 * sampleRate).toInt()
+            val endIdx = (startIdx + activeLen + tailLen).coerceAtMost(totalSamples)
+
+            for (i in startIdx until endIdx) {
+                val local = i - startIdx
+                val t = local.toDouble() / sampleRate
+                val attack = (t / 0.007).coerceAtMost(1.0)
+                val damper = if (local > activeLen) exp(-26.0 * ((local - activeLen).toDouble() / sampleRate)) else 1.0
+
+                // Simulate strong 3-string piano unison beating + Android mic AGC recovery swell
+                // right around 250-350ms (especially pronounced on lower bridge strings C4 & D4!)
+                val deepBeating = if (midi <= 62) {
+                    val dipAndSwell = 0.62 + 0.38 * sin(twoPi * 2.8 * t + 0.9)
+                    val agcSwell = if (t in 0.26..0.44) 1.32 else 1.0
+                    dipAndSwell * agcSwell
+                } else {
+                    0.82 + 0.18 * sin(twoPi * 3.1 * t)
+                }
+
+                val env = attack * damper * deepBeating * exp(-2.0 * t)
+                val wave =
+                    0.50 * sin(twoPi * f0 * sqrt(1.0 + inharmonicityB) * t) +
+                    0.42 * sin(twoPi * f0 * 2.0 * sqrt(1.0 + 4.0 * inharmonicityB) * t) +
+                    0.26 * sin(twoPi * f0 * 3.0 * sqrt(1.0 + 9.0 * inharmonicityB) * t) +
+                    0.15 * sin(twoPi * f0 * 4.0 * sqrt(1.0 + 16.0 * inharmonicityB) * t) +
+                    0.08 * sin(twoPi * f0 * 5.0 * sqrt(1.0 + 25.0 * inharmonicityB) * t)
+
+                mix[i] += wave * env * 0.30
+            }
+        }
+
+        val pcm = ShortArray(totalSamples) { i ->
+            (mix[i] * 32767.0).coerceIn(-32767.0, 32767.0).toInt().toShort()
+        }
+
+        val engine = PianoPitchEngine(sampleRate = sampleRate, windowSize = 4096)
+        val tracker = PianoNoteTracker()
+        val window = ShortArray(4096)
+        var pos = 0
+        var lastMs = 0L
+
+        while (pos + 4096 <= pcm.size) {
+            System.arraycopy(pcm, pos, window, 0, 4096)
+            lastMs = ((pos + 2048) * 1000L) / sampleRate
+            val frame = engine.analyze(window, 4096)
+            tracker.processFrame(frame, lastMs)
+            pos += 1024
+        }
+
+        val result = tracker.finishAndQuantize(90, false, lastMs + 50L)
+        val playable = result.notes.filter { !it.isRest }
+
+        assertEquals(
+            "Expected EXACT 8 scale notes Do-Re-Mi-Fa-Sol-La-Si-Do without duplicate Do/Re splits, got ${playable.map { it.midiNote }}",
+            scale,
+            playable.map { it.midiNote }
+        )
+    }
 }

@@ -53,7 +53,8 @@ class PianoPitchEngine(
     private val sampleRate: Int = 44100,
     private val windowSize: Int = 4096,
     private var calibrationCents: Float = 0f,
-    private val widePitchTolerance: Boolean = false
+    private val widePitchTolerance: Boolean = false,
+    private val calibrationProfile: PianoCalibrationProfile? = null
 ) {
     private val fftSize = 8192
     private val halfFft = fftSize / 2
@@ -118,6 +119,10 @@ class PianoPitchEngine(
 
     fun setCalibrationCents(cents: Float) {
         calibrationCents = cents
+    }
+
+    private fun effectiveCentsForMidi(midi: Int): Float {
+        return calibrationProfile?.effectiveCentsForMidi(midi) ?: calibrationCents
     }
 
     fun reset() {
@@ -222,10 +227,10 @@ class PianoPitchEngine(
         for (v in fluxHistory) avgFlux += v
         avgFlux /= fluxHistory.size
 
-        val rmsJump = prevRms > 0.0005f && rms > prevRms * 1.38f && rms > 0.0055f
+        val rmsJump = prevRms > 0.0005f && rms > prevRms * 1.52f && rms > 0.006f
         val fluxSpike = hasPrevSpectrum &&
-            rawFlux > max(14f, avgFlux * 2.25f + 7f) &&
-            rms > 0.005f
+            rawFlux > max(15f, avgFlux * 2.35f + 8f) &&
+            rms > 0.0055f
         val isOnset = fluxSpike || rmsJump
 
         fluxHistory[fluxIndex] = rawFlux
@@ -282,7 +287,7 @@ class PianoPitchEngine(
             0.0
         }
         val centsOff = if (winningMidi != null && refinedHz > 0.0) {
-            MusicTheory.frequencyToNearestMidi(refinedHz, calibrationCents).second
+            MusicTheory.frequencyToNearestMidi(refinedHz, effectiveCentsForMidi(winningMidi)).second
         } else {
             0f
         }
@@ -348,7 +353,7 @@ class PianoPitchEngine(
 
         for (idx in 0 until numCandidates) {
             val midi = minMidi + idx
-            val f0 = MusicTheory.midiToFrequency(midi, calibrationCents)
+            val f0 = MusicTheory.midiToFrequency(midi, effectiveCentsForMidi(midi))
 
             var h1Peak = 0f
             var h2Peak = 0f
@@ -443,7 +448,7 @@ class PianoPitchEngine(
     }
 
     private fun refineFundamentalHz(midi: Int, minBin: Int, maxBin: Int): Double {
-        val nominalF0 = MusicTheory.midiToFrequency(midi, calibrationCents)
+        val nominalF0 = MusicTheory.midiToFrequency(midi, effectiveCentsForMidi(midi))
         val f1PeakBin = findPeakBinAround(mag, nominalF0, minBin, maxBin)
         val f1Interp = parabolicBinFrequency(mag, f1PeakBin)
 

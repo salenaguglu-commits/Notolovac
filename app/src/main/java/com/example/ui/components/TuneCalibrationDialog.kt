@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Piano
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
@@ -67,6 +68,7 @@ import com.example.ui.theme.WarmCard
 import com.example.ui.theme.WarmCardBorder
 import com.example.ui.theme.WarmInk
 import com.example.ui.theme.WarmSurface
+import com.example.viewmodel.CalibrationMode
 import com.example.viewmodel.TuneDialogState
 import com.example.viewmodel.TunePhase
 import java.util.Locale
@@ -78,6 +80,7 @@ import kotlin.math.sin
 @Composable
 fun TuneCalibrationDialog(
     state: TuneDialogState,
+    onSelectMode: (CalibrationMode) -> Unit,
     onPlayReferenceC: () -> Unit,
     onToggleListen: () -> Unit,
     onResetStandard: () -> Unit,
@@ -160,7 +163,25 @@ fun TuneCalibrationDialog(
                 // 1. Unmistakable Active Saved Calibration Proof Card
                 SavedCalibrationStatusCard(state = state)
 
+                Spacer(Modifier.height(10.dp))
+
+                // 1b. Mode Switcher: Full Scale (Do-Do) vs Quick C
+                CalibrationModeSwitcher(
+                    selectedMode = state.mode,
+                    onSelectMode = onSelectMode
+                )
+
                 Spacer(Modifier.height(12.dp))
+
+                if (state.mode == CalibrationMode.FULL_SCALE) {
+                    ScaleCalibrationContent(
+                        snapshot = state.scaleSnapshot,
+                        isListening = state.isListening,
+                        savedProfile = state.savedProfile,
+                        onToggleListen = onToggleListen,
+                        onDismiss = onDismiss
+                    )
+                } else {
 
                 // 2. Live Measurement Dial + Heard Note/Hz/Cents Feedback Card
                 val dialBg = when {
@@ -437,6 +458,7 @@ fun TuneCalibrationDialog(
                         )
                     }
                 }
+                }
 
                 Spacer(Modifier.height(4.dp))
 
@@ -495,10 +517,10 @@ private fun SavedCalibrationStatusCard(state: TuneDialogState) {
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (state.savedIsCalibrated) {
-                        "Sačuvan i aktivan štim tvog klavira"
-                    } else {
-                        "Aktivan standardni štim (nije kalibrisano)"
+                    text = when {
+                        state.savedProfile.isScaleCalibrated -> "Sačuvan profil tvog klavira (Skala Do–Do)"
+                        state.savedIsCalibrated -> "Sačuvan štim tvog klavira (Brzi C)"
+                        else -> "Aktivan standardni štim (nije kalibrisano)"
                     },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
@@ -508,6 +530,96 @@ private fun SavedCalibrationStatusCard(state: TuneDialogState) {
                     text = "C4 = $c4Text ($sign$savedCentsInt ct)  •  A4 = $a4Text",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (state.savedIsCalibrated) OnSageMintContainer else MutedInk
+                )
+                if (state.savedProfile.isScaleCalibrated) {
+                    val stretchCt = state.savedProfile.octaveStretchCentsPerOctave.roundToInt()
+                    val stretchSign = if (stretchCt > 0) "+" else ""
+                    Text(
+                        text = "Soba i dinamika kalibrisani • Razvučenost oktave: $stretchSign${stretchCt} ct",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = OnSageMintContainer.copy(alpha = 0.85f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CalibrationModeSwitcher(
+    selectedMode: CalibrationMode,
+    onSelectMode: (CalibrationMode) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val fullSelected = selectedMode == CalibrationMode.FULL_SCALE
+        Surface(
+            onClick = { onSelectMode(CalibrationMode.FULL_SCALE) },
+            shape = RoundedCornerShape(14.dp),
+            color = if (fullSelected) HoneyGoldContainer else WarmCard,
+            border = BorderStroke(
+                width = if (fullSelected) 2.dp else 1.dp,
+                color = if (fullSelected) HoneyGoldTertiary else WarmCardBorder
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp)
+                .testTag("mode_full_scale_button")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Piano,
+                    contentDescription = null,
+                    tint = if (fullSelected) CoralPrimary else MutedInk,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.tune_mode_full_scale),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (fullSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (fullSelected) WarmInk else MutedInk
+                )
+            }
+        }
+
+        val quickSelected = selectedMode == CalibrationMode.QUICK_C
+        Surface(
+            onClick = { onSelectMode(CalibrationMode.QUICK_C) },
+            shape = RoundedCornerShape(14.dp),
+            color = if (quickSelected) HoneyGoldContainer else WarmCard,
+            border = BorderStroke(
+                width = if (quickSelected) 2.dp else 1.dp,
+                color = if (quickSelected) HoneyGoldTertiary else WarmCardBorder
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .height(48.dp)
+                .testTag("mode_quick_c_button")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Tune,
+                    contentDescription = null,
+                    tint = if (quickSelected) SageMintSecondary else MutedInk,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.tune_mode_quick_c),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (quickSelected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (quickSelected) WarmInk else MutedInk
                 )
             }
         }
