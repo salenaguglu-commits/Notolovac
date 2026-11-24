@@ -332,7 +332,7 @@ private fun StudioHeaderRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Image(
-                painter = painterResource(id = R.drawable.img_notolovac_icon_1795199040230),
+                painter = painterResource(id = R.drawable.ic_notolovac_icon_cat),
                 contentDescription = "Notolovac maskota",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
