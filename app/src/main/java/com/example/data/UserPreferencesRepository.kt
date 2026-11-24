@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.audio.MetronomeEngine
 import com.example.audio.PianoCalibrationProfile
 import com.example.model.MusicTheory
 import com.example.model.NoteLabelMode
@@ -59,7 +60,7 @@ class UserPreferencesRepository(private val context: Context) {
             isCalibrated = isCal,
             calibrationProfile = profile,
             noteLabelMode = NoteLabelMode.fromKey(prefs[Keys.NOTE_LABEL_MODE]),
-            metronomeBpm = (prefs[Keys.METRONOME_BPM] ?: 90).coerceIn(60, 140),
+            metronomeBpm = (prefs[Keys.METRONOME_BPM] ?: 90).coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM),
             metronomeEnabled = prefs[Keys.METRONOME_ENABLED] ?: false,
             beatsPerMeasure = if (prefs[Keys.BEATS_PER_MEASURE] == 3) 3 else 4
         )
@@ -87,7 +88,7 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun setMetronomeBpm(bpm: Int) {
         context.notolovacDataStore.edit { prefs ->
-            prefs[Keys.METRONOME_BPM] = bpm.coerceIn(60, 140)
+            prefs[Keys.METRONOME_BPM] = bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
         }
     }
 

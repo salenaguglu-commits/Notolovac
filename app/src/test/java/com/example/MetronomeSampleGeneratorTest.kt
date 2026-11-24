@@ -128,4 +128,45 @@ class MetronomeSampleGeneratorTest {
             falseNotes.size
         )
     }
+
+    @Test
+    fun emitsExactSampleAccurateBeatsAt260Bpm() {
+        val sampleRate = 44100
+        val bpm = 260 // 44100 * 60 / 260 = 10176.92307... samples/beat (~230.77 ms)
+        val expectedSpacing = sampleRate * 60.0 / bpm
+        val generator = MetronomeSampleGenerator(sampleRate = sampleRate)
+
+        val scheduled = mutableListOf<Pair<Long, Int>>()
+        val chunk = ShortArray(512)
+        val totalSamples = (expectedSpacing * 48.5).toInt()
+        val fullPcm = ShortArray(((totalSamples / 512) + 1) * 512)
+
+        var offset = 0
+        while (offset + 512 <= fullPcm.size) {
+            generator.fillBuffer(chunk, bpm = bpm, beatsPerMeasure = 4) { framePos, beatIdx ->
+                scheduled.add(framePos to beatIdx)
+            }
+            System.arraycopy(chunk, 0, fullPcm, offset, 512)
+            offset += 512
+        }
+
+        assertTrue("Expected >= 48 beats at 260 BPM, got ${scheduled.size}", scheduled.size >= 48)
+        for (i in 0 until 48) {
+            val (framePos, beatIdx) = scheduled[i]
+            val expectedFrame = (i * expectedSpacing).toLong()
+            assertEquals("Beat index mismatch at beat $i", i % 4, beatIdx)
+            assertTrue(
+                "Beat $i drifted at 260 BPM! frame=$framePos expected=$expectedFrame",
+                abs(framePos - expectedFrame) <= 1L
+            )
+            var peak = 0
+            val start = framePos.toInt()
+            val end = minOf(fullPcm.size, start + 600)
+            for (s in start until end) {
+                val a = abs(fullPcm[s].toInt())
+                if (a > peak) peak = a
+            }
+            assertTrue("Beat $i click audio missing at 260 BPM: peak=$peak", peak > 12000)
+        }
+    }
 }

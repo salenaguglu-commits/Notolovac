@@ -1,5 +1,7 @@
 package com.example.model
 
+import com.example.audio.MetronomeEngine
+
 /**
  * Pure, deterministic note-editing transformations for the sheet music editor.
  * Allows moving notes by staff step (diatonic), toggling sharps, assigning exact MIDI keys
@@ -90,8 +92,8 @@ object SheetNoteEditor {
         bpm: Int
     ): List<DetectedNote> {
         if (index !in notes.indices) return notes
-        val msPerBeat = 60_000.0 / bpm.coerceIn(50, 160)
-        val newDurationMs = (newDuration.beats * msPerBeat).toLong().coerceAtLeast(80L)
+        val msPerBeat = 60_000.0 / bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
+        val newDurationMs = (newDuration.beats * msPerBeat).toLong().coerceAtLeast(50L)
         return notes.mapIndexed { i, note ->
             if (i == index) {
                 note.copy(
@@ -109,7 +111,7 @@ object SheetNoteEditor {
         selectedIndex: Int?,
         bpm: Int
     ): Pair<List<DetectedNote>, Int> {
-        val msPerBeat = 60_000.0 / bpm.coerceIn(50, 160)
+        val msPerBeat = 60_000.0 / bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
         val insertPos = if (selectedIndex != null && selectedIndex in notes.indices) {
             selectedIndex + 1
         } else {

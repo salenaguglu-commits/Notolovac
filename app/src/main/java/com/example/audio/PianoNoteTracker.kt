@@ -419,11 +419,12 @@ class PianoNoteTracker(
             }
 
             val msPerBeat = if (lockToMetronomeBpm || rawNotes.size < 3) {
-                60_000.0 / fallbackBpm.coerceIn(55, 160)
+                60_000.0 / fallbackBpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
             } else {
                 estimateNaturalBeatMs(rawNotes, fallbackBpm)
             }
-            val effectiveBpm = (60_000.0 / msPerBeat).roundToInt().coerceIn(55, 160)
+            val effectiveBpm = (60_000.0 / msPerBeat).roundToInt()
+                .coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
 
             val result = mutableListOf<DetectedNote>()
             var idCounter = 1L

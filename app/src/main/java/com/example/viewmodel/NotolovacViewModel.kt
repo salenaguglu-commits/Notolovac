@@ -170,7 +170,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun setMetronomeBpm(bpm: Int) {
-        val clamped = bpm.coerceIn(60, 140)
+        val clamped = bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
         viewModelScope.launch {
             preferencesRepository.setMetronomeBpm(clamped)
         }
@@ -942,8 +942,8 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
             )
         }
         if (!note.isRest) {
-            val msPerBeat = 60_000.0 / sheet.bpm.coerceIn(50, 160)
-            val previewMs = (duration.beats * msPerBeat).toInt().coerceIn(220, 1200)
+            val msPerBeat = 60_000.0 / sheet.bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
+            val previewMs = (duration.beats * msPerBeat).toInt().coerceIn(180, 1200)
             synthesizer.playNote(
                 midiNote = note.midiNote,
                 durationMs = previewMs,
@@ -1042,7 +1042,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         playbackJob = viewModelScope.launch {
-            val msPerBeat = 60_000.0 / sheet.bpm.coerceIn(50, 160)
+            val msPerBeat = 60_000.0 / sheet.bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
             sheet.notes.forEachIndexed { idx, note ->
                 if (!isActive) return@launch
                 _uiState.update { state ->
@@ -1050,7 +1050,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                         state.copy(activeSheet = cur.copy(playingNoteIndex = idx))
                     } ?: state
                 }
-                val stepDurationMs = (note.beats * msPerBeat).toLong().coerceIn(95L, 2600L)
+                val stepDurationMs = (note.beats * msPerBeat).toLong().coerceIn(55L, 2600L)
                 if (!note.isRest) {
                     synthesizer.playNote(
                         midiNote = note.midiNote,

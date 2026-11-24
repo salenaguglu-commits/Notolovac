@@ -56,7 +56,7 @@ internal class MetronomeSampleGenerator(
         beatsPerMeasure: Int,
         onBeatScheduled: (beatFramePos: Long, beatIndex: Int) -> Unit
     ) {
-        val safeBpm = bpm.coerceIn(60, 140)
+        val safeBpm = bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
         val safeBeats = if (beatsPerMeasure == 3) 3 else 4
         val samplesPerBeat = (sampleRate.toDouble() * 60.0) / safeBpm.toDouble()
 
@@ -161,6 +161,11 @@ internal class MetronomeSampleGenerator(
  * - Glitch-free live BPM and 4/4 <-> 3/4 updates while running
  */
 class MetronomeEngine {
+    companion object {
+        const val MIN_BPM = 40
+        const val MAX_BPM = 260
+    }
+
     private val sampleRate = 44100
     private val chunkSamples = 512 // ~11.6 ms chunks for tight low-latency visual sync & live BPM changes
 
@@ -182,7 +187,7 @@ class MetronomeEngine {
         beatsPerMeasure: Int,
         onBeat: (beatIndex: Int) -> Unit
     ) {
-        currentBpm = bpm.coerceIn(60, 140)
+        currentBpm = bpm.coerceIn(MIN_BPM, MAX_BPM)
         currentBeatsPerMeasure = if (beatsPerMeasure == 3) 3 else 4
         beatListener = onBeat
 
@@ -201,7 +206,7 @@ class MetronomeEngine {
     }
 
     fun updateBpm(bpm: Int) {
-        currentBpm = bpm.coerceIn(60, 140)
+        currentBpm = bpm.coerceIn(MIN_BPM, MAX_BPM)
     }
 
     fun updateBeatsPerMeasure(beatsPerMeasure: Int) {

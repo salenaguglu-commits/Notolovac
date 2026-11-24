@@ -42,6 +42,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +61,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.audio.MetronomeEngine
 import com.example.data.UserSettings
 import com.example.model.MusicTheory
 import com.example.model.NoteLabelMode
@@ -421,115 +424,174 @@ private fun MetronomeCompactCard(
         border = BorderStroke(1.dp, WarmCardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // Metronome play/stop button
-            Surface(
-                onClick = onToggle,
-                shape = CircleShape,
-                color = if (isRunning) LavenderMusic else LavenderContainer,
-                modifier = Modifier
-                    .size(48.dp)
-                    .testTag("metronome_toggle_button")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (isRunning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                        contentDescription = if (isRunning) "Zaustavi metronom" else "Pokreni metronom",
-                        tint = if (isRunning) Color.White else OnLavenderContainer,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-
-            // Beat dots + label
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // Metronome play/stop button
+                Surface(
+                    onClick = onToggle,
+                    shape = CircleShape,
+                    color = if (isRunning) LavenderMusic else LavenderContainer,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("metronome_toggle_button")
                 ) {
-                    for (b in 0 until beatsPerMeasure) {
-                        val active = isRunning && currentBeat == b
-                        Box(
-                            modifier = Modifier
-                                .size(if (active) 11.dp else 8.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    when {
-                                        active && b == 0 -> CoralPrimary
-                                        active -> LavenderMusic
-                                        else -> WarmCardBorder
-                                    }
-                                )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isRunning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                            contentDescription = if (isRunning) "Zaustavi metronom" else "Pokreni metronom",
+                            tint = if (isRunning) Color.White else OnLavenderContainer,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
-                Spacer(Modifier.height(2.dp))
+
+                // Beat dots + label
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        for (b in 0 until beatsPerMeasure) {
+                            val active = isRunning && currentBeat == b
+                            Box(
+                                modifier = Modifier
+                                    .size(if (active) 11.dp else 8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            active && b == 0 -> CoralPrimary
+                                            active -> LavenderMusic
+                                            else -> WarmCardBorder
+                                        }
+                                    )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Metronom",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MutedInk
+                    )
+                }
+
+                // BPM - / + controls
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    IconButton(
+                        onClick = { onBpmChange(bpm - 5) },
+                        enabled = bpm > MetronomeEngine.MIN_BPM,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("bpm_minus_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Remove,
+                            contentDescription = "Smanji tempo",
+                            tint = if (bpm > MetronomeEngine.MIN_BPM) WarmInk else MutedInk.copy(alpha = 0.4f)
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$bpm",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = WarmInk
+                        )
+                        Text(
+                            text = "BPM",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MutedInk
+                        )
+                    }
+                    IconButton(
+                        onClick = { onBpmChange(bpm + 5) },
+                        enabled = bpm < MetronomeEngine.MAX_BPM,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("bpm_plus_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "Povećaj tempo",
+                            tint = if (bpm < MetronomeEngine.MAX_BPM) WarmInk else MutedInk.copy(alpha = 0.4f)
+                        )
+                    }
+                }
+
+                // 4/4 vs 3/4 time signature pill
+                Surface(
+                    onClick = { onBeatsChange(if (beatsPerMeasure == 4) 3 else 4) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = WarmCard,
+                    border = BorderStroke(1.dp, WarmCardBorder),
+                    modifier = Modifier
+                        .height(48.dp)
+                        .testTag("time_signature_button")
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 10.dp)
+                    ) {
+                        Text(
+                            text = "$beatsPerMeasure/4",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = WarmInk
+                        )
+                    }
+                }
+            }
+
+            // Smooth tempo slider (40..260 BPM) for fast jumps to any tempo
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
-                    text = "Metronom",
+                    text = "${MetronomeEngine.MIN_BPM}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MutedInk
                 )
-            }
-
-            // BPM - / + controls
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                IconButton(
-                    onClick = { onBpmChange(bpm - 5) },
+                Slider(
+                    value = bpm.toFloat().coerceIn(
+                        MetronomeEngine.MIN_BPM.toFloat(),
+                        MetronomeEngine.MAX_BPM.toFloat()
+                    ),
+                    onValueChange = { onBpmChange(it.roundToInt()) },
+                    valueRange = MetronomeEngine.MIN_BPM.toFloat()..MetronomeEngine.MAX_BPM.toFloat(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = LavenderMusic,
+                        activeTrackColor = LavenderMusic,
+                        inactiveTrackColor = LavenderContainer
+                    ),
                     modifier = Modifier
-                        .size(48.dp)
-                        .testTag("bpm_minus_button")
-                ) {
-                    Icon(Icons.Filled.Remove, contentDescription = "Smanji tempo", tint = WarmInk)
-                }
-                Text(
-                    text = "$bpm",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = WarmInk
+                        .weight(1f)
+                        .height(32.dp)
+                        .testTag("bpm_slider")
                 )
-                IconButton(
-                    onClick = { onBpmChange(bpm + 5) },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("bpm_plus_button")
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Povećaj tempo", tint = WarmInk)
-                }
-            }
-
-            // 4/4 vs 3/4 time signature pill
-            Surface(
-                onClick = { onBeatsChange(if (beatsPerMeasure == 4) 3 else 4) },
-                shape = RoundedCornerShape(12.dp),
-                color = WarmCard,
-                border = BorderStroke(1.dp, WarmCardBorder),
-                modifier = Modifier
-                    .height(48.dp)
-                    .testTag("time_signature_button")
-            ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.padding(horizontal = 10.dp)
-                ) {
-                    Text(
-                        text = "$beatsPerMeasure/4",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = WarmInk
-                    )
-                }
+                Text(
+                    text = "${MetronomeEngine.MAX_BPM}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MutedInk
+                )
             }
         }
     }
