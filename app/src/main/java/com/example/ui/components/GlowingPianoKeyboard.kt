@@ -38,10 +38,12 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.model.MusicTheory
 import com.example.model.NoteLabelMode
 import com.example.ui.theme.CoralPrimary
@@ -365,7 +367,7 @@ fun OctaveSelectorRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "Opseg dirki:",
+            text = stringResource(R.string.keyboard_octave_range),
             style = MaterialTheme.typography.bodySmall,
             color = MutedInk
         )

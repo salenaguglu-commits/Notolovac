@@ -101,9 +101,9 @@ fun NotebookScreen(
                     )
                     Text(
                         text = if (songs.isEmpty()) {
-                            "Ovde čuvaš sve svoje melodije"
+                            stringResource(R.string.notebook_subtitle_empty)
                         } else {
-                            "Sačuvano pesmica: ${songs.size}"
+                            stringResource(R.string.notebook_subtitle_count, songs.size)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MutedInk
@@ -139,14 +139,14 @@ fun NotebookScreen(
             containerColor = CreamPaper,
             title = {
                 Text(
-                    text = "Obrisati pesmicu?",
+                    text = stringResource(R.string.delete_song_dialog_title),
                     style = MaterialTheme.typography.titleLarge,
                     color = WarmInk
                 )
             },
             text = {
                 Text(
-                    text = "Da li sigurno želiš da obrišeš „${song.title}“ iz svoje sveske?",
+                    text = stringResource(R.string.delete_song_dialog_body, song.title),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MutedInk
                 )
@@ -160,12 +160,12 @@ fun NotebookScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = SoftError),
                     modifier = Modifier.testTag("confirm_delete_song_button")
                 ) {
-                    Text("Obriši")
+                    Text(stringResource(R.string.action_delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeleteSong = null }) {
-                    Text("Odustani", color = WarmInk)
+                    Text(stringResource(R.string.action_cancel), color = WarmInk)
                 }
             }
         )
@@ -183,7 +183,7 @@ private fun EmptyNotebookView(onGoToStudio: () -> Unit) {
     ) {
         Image(
             painter = painterResource(id = R.drawable.img_notolovac_mascot_1795199060528),
-            contentDescription = "Notolovac lisica hvata note",
+            contentDescription = stringResource(R.string.empty_notebook_mascot_desc),
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(210.dp)
@@ -219,7 +219,7 @@ private fun EmptyNotebookView(onGoToStudio: () -> Unit) {
             Icon(imageVector = Icons.Filled.Mic, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "Snimi prvu melodiju",
+                text = stringResource(R.string.empty_notebook_cta),
                 style = MaterialTheme.typography.labelLarge
             )
         }
@@ -318,7 +318,7 @@ private fun SavedSongNotebookCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Surface(shape = RoundedCornerShape(10.dp), color = SageMintContainer) {
                     Text(
-                        text = "${song.playableNoteCount} nota",
+                        text = stringResource(R.string.note_count_label, song.playableNoteCount),
                         style = MaterialTheme.typography.labelSmall,
                         color = WarmInk,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)

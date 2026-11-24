@@ -74,6 +74,7 @@ import com.example.ui.components.FullSheetMusicCanvas
 import com.example.ui.components.GlowingPianoKeyboard
 import com.example.ui.components.NoteEditorCard
 import com.example.ui.components.OctaveSelectorRow
+import com.example.ui.components.localizedName
 import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.CreamPaper
 import com.example.ui.theme.HoneyGoldContainer
@@ -184,7 +185,7 @@ fun SheetResultScreen(
                                     border = BorderStroke(1.dp, SageMintSecondary)
                                 ) {
                                     Text(
-                                        text = "Režim izmene",
+                                        text = stringResource(R.string.edit_mode_badge),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = OnSageMintContainer,
@@ -285,7 +286,12 @@ fun SheetResultScreen(
                             border = BorderStroke(1.dp, WarmCardBorder)
                         ) {
                             Text(
-                                text = "$noteCount nota • ${sheet.bpm} BPM • ${sheet.beatsPerMeasure}/4",
+                                text = stringResource(
+                                    R.string.sheet_meta_format,
+                                    noteCount,
+                                    sheet.bpm,
+                                    sheet.beatsPerMeasure
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MutedInk,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -377,9 +383,9 @@ fun SheetResultScreen(
                             )
                             Text(
                                 text = if (sheet.isEditMode) {
-                                    "Skroluj note gore-dole i dodirni bilo koju notu, a menjaj je u panelu ispod."
+                                    stringResource(R.string.edit_sheet_hint_active)
                                 } else {
-                                    "Savet: Pritisni „Izmeni“ ili dodirni bilo koju notu da je čuješ, pomeriš ili promeniš trajanje."
+                                    stringResource(R.string.edit_sheet_hint_view)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (sheet.isEditMode) CoralPrimary else MutedInk,
@@ -453,7 +459,11 @@ fun SheetResultScreen(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = if (sheet.isSaved) "Sačuvano ✓" else stringResource(R.string.action_save_song),
+                                    text = if (sheet.isSaved) {
+                                        stringResource(R.string.action_saved_check)
+                                    } else {
+                                        stringResource(R.string.action_save_song)
+                                    },
                                     style = MaterialTheme.typography.labelLarge
                                 )
                             }
@@ -553,7 +563,7 @@ fun SheetResultScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Dodirni dirku:",
+                                        text = stringResource(R.string.edit_tap_key_hint),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = CoralPrimary
@@ -602,9 +612,10 @@ fun SheetResultScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
+                            val localizedDuration = sel.duration.localizedName()
                             Text(
                                 text = if (sel.isRest) {
-                                    "Pauza (${sel.duration.serbianName})"
+                                    stringResource(R.string.edit_rest_with_duration, localizedDuration)
                                 } else {
                                     MusicTheory.formatFullNoteDescription(sel.midiNote)
                                 },
@@ -615,7 +626,7 @@ fun SheetResultScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = sel.duration.serbianName,
+                                text = localizedDuration,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MutedInk
                             )
@@ -639,7 +650,7 @@ fun SheetResultScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Edit,
-                                        contentDescription = "Izmeni ovu notu",
+                                        contentDescription = stringResource(R.string.edit_this_note_desc),
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -658,7 +669,7 @@ fun SheetResultScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                                        contentDescription = "Poslušaj notu",
+                                        contentDescription = stringResource(R.string.edit_audition_desc),
                                         tint = SageMintSecondary
                                     )
                                 }
@@ -669,7 +680,7 @@ fun SheetResultScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.DeleteOutline,
-                                    contentDescription = "Ukloni notu",
+                                    contentDescription = stringResource(R.string.edit_remove_note_desc),
                                     tint = SoftError
                                 )
                             }

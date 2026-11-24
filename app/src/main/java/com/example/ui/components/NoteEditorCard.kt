@@ -114,7 +114,7 @@ fun NoteEditorCard(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "Prethodna nota",
+                        contentDescription = stringResource(R.string.edit_prev_note_desc),
                         tint = if (selectedIndex > 0) WarmInk else MutedInk.copy(alpha = 0.4f)
                     )
                 }
@@ -126,7 +126,7 @@ fun NoteEditorCard(
             ) {
                 Text(
                     text = if (selectedNote.isRest) {
-                        "Pauza  •  #${selectedIndex + 1}/$totalCount"
+                        "${stringResource(R.string.edit_rest_label)}  •  #${selectedIndex + 1}/$totalCount"
                     } else {
                         "${MusicTheory.formatFullNoteDescription(selectedNote.midiNote)}  •  #${selectedIndex + 1}/$totalCount"
                     },
@@ -138,7 +138,7 @@ fun NoteEditorCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = selectedNote.duration.serbianName,
+                    text = selectedNote.duration.localizedName(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MutedInk,
                     maxLines = 1
@@ -158,7 +158,7 @@ fun NoteEditorCard(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Sledeća nota",
+                        contentDescription = stringResource(R.string.edit_next_note_desc),
                         tint = if (selectedIndex < totalCount - 1) WarmInk else MutedInk.copy(alpha = 0.4f)
                     )
                 }
@@ -186,7 +186,7 @@ fun NoteEditorCard(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = "Pretvori pauzu u notu",
+                    text = stringResource(R.string.edit_convert_rest),
                     style = MaterialTheme.typography.labelLarge
                 )
             }
@@ -212,7 +212,10 @@ fun NoteEditorCard(
                         .height(48.dp)
                         .testTag("edit_pitch_down_button")
                 ) {
-                    Icon(imageVector = Icons.Filled.KeyboardArrowDown, contentDescription = "Niže")
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = stringResource(R.string.edit_pitch_down)
+                    )
                     Spacer(Modifier.width(4.dp))
                     Text(stringResource(R.string.edit_pitch_down), style = MaterialTheme.typography.labelLarge)
                 }
@@ -272,7 +275,10 @@ fun NoteEditorCard(
                 ) {
                     Text(stringResource(R.string.edit_pitch_up), style = MaterialTheme.typography.labelLarge)
                     Spacer(Modifier.width(4.dp))
-                    Icon(imageVector = Icons.Filled.KeyboardArrowUp, contentDescription = "Više")
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowUp,
+                        contentDescription = stringResource(R.string.edit_pitch_up)
+                    )
                 }
             }
         }
@@ -280,16 +286,16 @@ fun NoteEditorCard(
         // 3. Duration Picker ("1/16", "1/8", "1/4", "1/2", "1/1")
         val durationChoices = if (selectedNote.isRest) {
             listOf(
-                NoteDuration.QUARTER to ("1/4" to "Čet."),
-                NoteDuration.HALF to ("1/2" to "Pol.")
+                NoteDuration.QUARTER to ("1/4" to NoteDuration.QUARTER.localizedShortName()),
+                NoteDuration.HALF to ("1/2" to NoteDuration.HALF.localizedShortName())
             )
         } else {
             listOf(
-                NoteDuration.SIXTEENTH to ("1/16" to "Šes."),
-                NoteDuration.EIGHTH to ("1/8" to "Osm."),
-                NoteDuration.QUARTER to ("1/4" to "Čet."),
-                NoteDuration.HALF to ("1/2" to "Pol."),
-                NoteDuration.WHOLE to ("1/1" to "Cela")
+                NoteDuration.SIXTEENTH to ("1/16" to NoteDuration.SIXTEENTH.localizedShortName()),
+                NoteDuration.EIGHTH to ("1/8" to NoteDuration.EIGHTH.localizedShortName()),
+                NoteDuration.QUARTER to ("1/4" to NoteDuration.QUARTER.localizedShortName()),
+                NoteDuration.HALF to ("1/2" to NoteDuration.HALF.localizedShortName()),
+                NoteDuration.WHOLE to ("1/1" to NoteDuration.WHOLE.localizedShortName())
             )
         }
 
@@ -356,12 +362,16 @@ fun NoteEditorCard(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                        contentDescription = "Poslušaj notu",
+                        contentDescription = stringResource(R.string.edit_audition_desc),
                         tint = SageMintSecondary,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text("Čuj", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    Text(
+                        text = stringResource(R.string.edit_audition_short),
+                        style = MaterialTheme.typography.labelLarge,
+                        maxLines = 1
+                    )
                 }
             }
 
@@ -381,7 +391,7 @@ fun NoteEditorCard(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add,
-                    contentDescription = "Dodaj notu",
+                    contentDescription = stringResource(R.string.edit_add_note_desc),
                     tint = CoralPrimary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -409,7 +419,7 @@ fun NoteEditorCard(
             ) {
                 Icon(
                     imageVector = Icons.Filled.DeleteOutline,
-                    contentDescription = "Ukloni notu",
+                    contentDescription = stringResource(R.string.edit_remove_note_desc),
                     tint = SoftError,
                     modifier = Modifier.size(18.dp)
                 )
@@ -437,7 +447,11 @@ fun NoteEditorCard(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Filled.Piano,
-                            contentDescription = if (showKeyboard) "Sakrij klavijaturu" else "Prikaži klavijaturu",
+                            contentDescription = if (showKeyboard) {
+                                stringResource(R.string.edit_hide_keyboard_desc)
+                            } else {
+                                stringResource(R.string.edit_show_keyboard_desc)
+                            },
                             tint = if (showKeyboard) CoralPrimary else MutedInk,
                             modifier = Modifier.size(22.dp)
                         )
@@ -446,4 +460,22 @@ fun NoteEditorCard(
             }
         }
     }
+}
+
+@Composable
+fun NoteDuration.localizedName(): String = when (this) {
+    NoteDuration.SIXTEENTH -> stringResource(R.string.duration_sixteenth)
+    NoteDuration.EIGHTH -> stringResource(R.string.duration_eighth)
+    NoteDuration.QUARTER -> stringResource(R.string.duration_quarter)
+    NoteDuration.HALF -> stringResource(R.string.duration_half)
+    NoteDuration.WHOLE -> stringResource(R.string.duration_whole)
+}
+
+@Composable
+fun NoteDuration.localizedShortName(): String = when (this) {
+    NoteDuration.SIXTEENTH -> stringResource(R.string.duration_short_sixteenth)
+    NoteDuration.EIGHTH -> stringResource(R.string.duration_short_eighth)
+    NoteDuration.QUARTER -> stringResource(R.string.duration_short_quarter)
+    NoteDuration.HALF -> stringResource(R.string.duration_short_half)
+    NoteDuration.WHOLE -> stringResource(R.string.duration_short_whole)
 }

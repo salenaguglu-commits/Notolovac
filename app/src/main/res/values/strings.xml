@@ -1,50 +1,212 @@
 <resources>
     <string name="app_name">Notolovac</string>
     <string name="tab_studio">Studio</string>
-    <string name="tab_notebook">Moja sveska</string>
-    <string name="action_listen_now">Slušaj sada</string>
-    <string name="action_stop_listening">Završi snimanje</string>
-    <string name="action_tune_c">Štimuj C</string>
-    <string name="action_play_melody">Pusti melodiju</string>
-    <string name="action_stop_playback">Zaustavi</string>
-    <string name="action_save_song">Sačuvaj u svesku</string>
-    <string name="action_share_image">Podeli sliku</string>
-    <string name="action_back">Nazad</string>
-    <string name="action_delete">Obriši</string>
+    <string name="tab_notebook">My Notebook</string>
+
+    <!-- Studio & Recording -->
+    <string name="studio_subtitle_listening">Catching your notes…</string>
+    <string name="studio_subtitle_default">Your music notebook</string>
+    <string name="studio_mascot_desc">Notolovac mascot — press and hold for app info</string>
+    <string name="studio_tune_profile_saved">Piano profile</string>
+    <string name="studio_tune_saved">Tuning saved</string>
+    <string name="studio_tune_standard">Standard 440 Hz</string>
+    <string name="action_listen_now">Listen Now</string>
+    <string name="action_stop_listening">Finish Recording</string>
+    <string name="action_record_play">Record Play</string>
+    <string name="action_stop_record_play">Finish</string>
+    <string name="action_tune_c">Tune C</string>
+    <string name="action_play_melody">Play Melody</string>
+    <string name="action_stop_playback">Stop</string>
+    <string name="action_save_song">Save to Notebook</string>
+    <string name="action_saved_check">Saved ✓</string>
+    <string name="action_share_image">Share Image</string>
+    <string name="action_back">Back</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_close">Close</string>
+
+    <!-- Live Staff & Keyboard -->
     <string name="label_mode_solfege">Do-Re-Mi</string>
     <string name="label_mode_letters">C-D-E</string>
-    <string name="label_mode_clean">Čisto</string>
-    <string name="permission_mic_title">Potreban je mikrofon</string>
-    <string name="permission_mic_body">Notolovcu je potreban pristup mikrofonu da bi čuo tvoj klavir i nacrtao note. Zvuk ostaje samo na tvom uređaju.</string>
-    <string name="permission_mic_allow">Dozvoli mikrofon</string>
-    <string name="empty_notebook_title">Tvoja muzička sveska je još prazna!</string>
-    <string name="empty_notebook_body">Pritisni „Slušaj sada“, odsviraj svoju prvu melodiju na klaviru i sačuvaj je ovde.</string>
-    <string name="tune_dialog_title">Kalibracija tvog klavira</string>
-    <string name="tune_dialog_subtitle">Prilagodi Notolovac tačnom štimu, dinamici i sobi tvog klavira.</string>
-    <string name="tune_mode_quick_c">Brzi štim (Do)</string>
-    <string name="tune_mode_full_scale">Skala Do–Do</string>
-    <string name="tune_play_reference">Poslušaj primer C</string>
-    <string name="tune_start_listening">Slušaj moje C</string>
-    <string name="tune_reset_standard">Vrati na 440 Hz</string>
-    <string name="scale_cal_start">Pokreni kalibraciju skale</string>
-    <string name="scale_cal_stop">Zaustavi kalibraciju</string>
-    <string name="scale_cal_retry">Kalibriši skalu ponovo</string>
-    <string name="scale_cal_use_profile">Gotovo — koristi ovaj profil</string>
-    <string name="action_edit_notes">Izmeni</string>
-    <string name="action_done_editing">Gotovo</string>
-    <string name="edit_pitch_section">Visina note (pomeri gore/dole)</string>
-    <string name="edit_pitch_down">Niže</string>
-    <string name="edit_pitch_up">Više</string>
-    <string name="edit_keyboard_hint">Ili jednostavno dodirni tačnu dirku na klavijaturi ispod!</string>
-    <string name="edit_duration_section">Dužina trajanja note</string>
-    <string name="edit_add_note">Dodaj</string>
-    <string name="share_sheet_chooser">Podeli notni zapis</string>
-    <string name="default_song_title">Moja nova melodija</string>
-    <string name="action_close">Zatvori</string>
-    <string name="about_fox_image_desc">Lisica koja svira klavir</string>
-    <string name="about_title_format">Elenin mali Notolovac – verzija %1$s</string>
-    <string name="about_privacy_safety_body">Ova aplikacija je potpuno besplatna, ne sakuplja nikakve podatke, nema fizički pristup internetu i potpuno je bezbedna za decu.</string>
-    <string name="about_community_donation_body">Za više informacija posetite bloom-it.rs/freebies, a ko želi, može da donira neki dinar za mace i kuce Beograda koje nemaju svoj dom.</string>
+    <string name="label_mode_clean">Clean</string>
+    <string name="live_badge_listening">Listening (%1$d)</string>
+    <string name="live_badge_recording_keys">REC (%1$d)</string>
+    <string name="live_badge_sheet">Music Sheet</string>
+    <string name="studio_mic_clipping_hint">A bit loud for the microphone — move the phone a step back from the piano for cleaner notes.</string>
+    <string name="studio_empty_staff_hint">Tap “Listen Now” and play a melody on your piano, or try the keys below!</string>
+    <string name="studio_keyboard_title">Glowing Keyboard</string>
+    <string name="keyboard_octave_range">Key range:</string>
+    <string name="landscape_clear_staff_desc">Clear notes from staff</string>
+
+    <!-- Metronome -->
+    <string name="metronome_title">Metronome</string>
+    <string name="metronome_start_desc">Start metronome</string>
+    <string name="metronome_stop_desc">Stop metronome</string>
+    <string name="metronome_tempo_down_desc">Decrease tempo</string>
+    <string name="metronome_tempo_up_desc">Increase tempo</string>
+
+    <!-- Permissions -->
+    <string name="permission_mic_title">Microphone Needed</string>
+    <string name="permission_mic_body">Notolovac needs microphone access to hear your piano and draw the notes. Audio stays strictly on your device.</string>
+    <string name="permission_mic_allow">Allow Microphone</string>
+    <string name="error_mic_permission_denied">Without microphone permission, Notolovac cannot hear the piano.</string>
+    <string name="error_mic_unavailable">Microphone is currently unavailable.</string>
+    <string name="error_mic_start_failed">Could not start the microphone.</string>
+
+    <!-- Notebook -->
+    <string name="notebook_subtitle_empty">All your saved melodies live here</string>
+    <string name="notebook_subtitle_count">Saved songs: %1$d</string>
+    <string name="empty_notebook_title">Your music notebook is still empty!</string>
+    <string name="empty_notebook_body">Tap “Listen Now”, play your first melody on the piano, and save it here.</string>
+    <string name="empty_notebook_mascot_desc">Notolovac fox catching musical notes</string>
+    <string name="empty_notebook_cta">Record First Melody</string>
+    <string name="delete_song_dialog_title">Delete song?</string>
+    <string name="delete_song_dialog_body">Are you sure you want to delete “%1$s” from your notebook?</string>
+    <string name="note_count_label">%1$d notes</string>
+    <string name="sheet_meta_format">%1$d notes • %2$d BPM • %3$d/4</string>
+
+    <!-- Sheet Result & Note Editor -->
+    <string name="action_edit_notes">Edit</string>
+    <string name="action_done_editing">Done</string>
+    <string name="edit_mode_badge">Edit Mode</string>
+    <string name="edit_sheet_hint_active">Scroll the sheet up and down, tap any note, and edit it in the panel below.</string>
+    <string name="edit_sheet_hint_view">Tip: Tap “Edit” or tap any note to hear it, shift its pitch, or change its duration.</string>
+    <string name="edit_tap_key_hint">Tap a key:</string>
+    <string name="edit_pitch_section">Note pitch (move up/down)</string>
+    <string name="edit_pitch_down">Lower</string>
+    <string name="edit_pitch_up">Higher</string>
+    <string name="edit_keyboard_hint">Or simply tap the exact key on the keyboard below!</string>
+    <string name="edit_duration_section">Note duration</string>
+    <string name="edit_add_note">Add</string>
+    <string name="edit_add_note_desc">Add note</string>
+    <string name="edit_prev_note_desc">Previous note</string>
+    <string name="edit_next_note_desc">Next note</string>
+    <string name="edit_rest_label">Rest</string>
+    <string name="edit_rest_with_duration">Rest (%1$s)</string>
+    <string name="edit_convert_rest">Turn rest into a note</string>
+    <string name="edit_audition_short">Hear</string>
+    <string name="edit_audition_desc">Listen to note</string>
+    <string name="edit_this_note_desc">Edit this note</string>
+    <string name="edit_remove_note_desc">Remove note</string>
+    <string name="edit_hide_keyboard_desc">Hide keyboard</string>
+    <string name="edit_show_keyboard_desc">Show keyboard</string>
+
+    <!-- Note Durations -->
+    <string name="duration_sixteenth">Sixteenth (1/16)</string>
+    <string name="duration_eighth">Eighth (1/8)</string>
+    <string name="duration_quarter">Quarter (1/4)</string>
+    <string name="duration_half">Half (1/2)</string>
+    <string name="duration_whole">Whole (1/1)</string>
+    <string name="duration_short_sixteenth">16th</string>
+    <string name="duration_short_eighth">8th</string>
+    <string name="duration_short_quarter">Qtr</string>
+    <string name="duration_short_half">Half</string>
+    <string name="duration_short_whole">Whole</string>
+
+    <!-- Export & Share -->
+    <string name="share_sheet_chooser">Share Music Sheet</string>
+    <string name="error_share_export_failed">Could not create the music sheet image.</string>
+    <string name="default_song_title">My New Melody</string>
+    <string name="default_song_title_short">My Melody</string>
+    <string name="default_numbered_melody_title">My Melody #%1$d</string>
+    <string name="export_footer_watermark">Created with Notolovac</string>
+
+    <!-- Snackbar & Status Messages -->
+    <string name="msg_no_piano_notes_heard">Couldn\'t hear any piano notes. Try playing a bit louder or closer to the piano!</string>
+    <string name="msg_no_keyboard_notes_recorded">Play at least one key before finishing the recording!</string>
+    <string name="msg_add_note_before_saving">Add at least one note before saving.</string>
+    <string name="msg_saved_to_notebook">Saved to your music notebook!</string>
+    <string name="msg_song_deleted">Song “%1$s” was deleted.</string>
+    <string name="msg_tuning_reset_snackbar">Tuning reset to standard 440 Hz.</string>
+    <string name="msg_scale_profile_saved_snackbar">Piano profile saved (C–C Scale): C4 = %1$s (%2$s%3$d ct)</string>
+    <string name="msg_quick_c_saved_snackbar">Piano tuning saved: C4 = %1$s (%2$s%3$d ct)</string>
+
+    <!-- Tune / Piano Calibration Dialog -->
+    <string name="tune_dialog_title">Calibrate Your Piano</string>
+    <string name="tune_dialog_subtitle">Adapt Notolovac to your piano\'s exact tuning, dynamics, and room acoustics.</string>
+    <string name="tune_mode_quick_c">Quick Tune (C)</string>
+    <string name="tune_mode_full_scale">Scale C–C</string>
+    <string name="tune_play_reference">Hear Reference C</string>
+    <string name="tune_start_listening">Listen to My C</string>
+    <string name="tune_stop_listening">Stop Listening</string>
+    <string name="tune_remeasure_my_c">Measure My C Again</string>
+    <string name="tune_remeasure_c">Measure C Again</string>
+    <string name="tune_done_use_tuning">Done — Use This Tuning</string>
+    <string name="tune_reset_standard">Reset to 440 Hz</string>
+    <string name="tune_mic_label">Microphone</string>
+    <string name="tune_confirm_progress">Lock %1$d/%2$d</string>
+
+    <string name="tune_saved_profile_scale">Saved profile for your piano (C–C Scale)</string>
+    <string name="tune_saved_profile_quick">Saved tuning for your piano (Quick C)</string>
+    <string name="tune_saved_profile_standard">Standard tuning active (not calibrated)</string>
+    <string name="tune_room_stretch_info">Room &amp; dynamics calibrated • Octave stretch: %1$s%2$d ct</string>
+
+    <string name="tune_pill_saved">Saved: %1$s</string>
+    <string name="tune_pill_wrong_note">Heard: %1$s (%2$s) — not C!</string>
+    <string name="tune_pill_retry">Press C again (%1$s)</string>
+    <string name="tune_pill_unstable_tone">unstable tone</string>
+    <string name="tune_pill_locking">Hearing: %1$s (%2$s)</string>
+    <string name="tune_pill_waiting">Waiting for piano sound…</string>
+    <string name="tune_pill_ready">Ready to measure C</string>
+
+    <string name="tune_status_idle_saved">Your tuning is already saved and active. You can measure C again anytime.</string>
+    <string name="tune_status_idle_default">Tap “Listen to My C”, then press and hold middle C (Do) for 1–2 seconds.</string>
+    <string name="tune_status_reset_done">Reset to standard tuning (C4 = 261.6 Hz, A4 = 440.0 Hz).</string>
+    <string name="tune_status_listening_prompt">Listening to microphone… Press and hold a single C (Do) key for 1–2 seconds.</string>
+    <string name="tune_status_unstable">Heard %1$s (%2$s, %3$s%4$d ct), but the tone wasn\'t steady. Press just one C key again!</string>
+    <string name="tune_status_locking">Hearing %1$s (%2$s, %3$s%4$d ct) — hold the key a moment longer (%5$d/%6$d)…</string>
+    <string name="tune_status_saved">Your piano tuning is saved! C4 = %1$s (%2$s%3$d ct • A4 ≈ %4$s). All notes will now use this tuning.</string>
+    <string name="tune_status_wrong_note">Heard %1$s (%2$s) — that\'s not C. Press a C (Do) key again!</string>
+    <string name="tune_status_too_short">Heard C (%1$s, %2$s%3$d ct), but the note was too short. Press C again and hold for 1–2 seconds!</string>
+    <string name="tune_status_no_sound_yet">Still not hearing a clear piano tone. Move the phone closer and press C a little firmer!</string>
+
+    <!-- Full Scale Calibration -->
+    <string name="scale_cal_start">Start Scale Calibration</string>
+    <string name="scale_cal_stop">Stop Calibration</string>
+    <string name="scale_cal_retry">Calibrate Scale Again</string>
+    <string name="scale_cal_use_profile">Done — Use This Profile</string>
+    <string name="scale_silence_label">Silence</string>
+    <string name="scale_pill_saved">Piano profile saved (8/8)</string>
+    <string name="scale_pill_wrong_note">Heard %1$s — press %2$s</string>
+    <string name="scale_pill_silence">Step 1: Room silence</string>
+    <string name="scale_pill_play_note">Now play: %1$s</string>
+    <string name="scale_pill_listening">Listening…</string>
+    <string name="scale_pill_ready">C4 – C5 Scale (~15 sec)</string>
+    <string name="scale_room_quiet">Quiet room</string>
+    <string name="scale_room_moderate">Moderate noise</string>
+    <string name="scale_room_noisy">Noisier room</string>
+    <string name="scale_chip_room">Room: %1$s</string>
+    <string name="scale_chip_octave">Octave: %1$s%2$d ct</string>
+    <string name="scale_clipping_warning">Phone is very close to the piano — move it back 15–20 cm for the cleanest notes.</string>
+
+    <string name="scale_status_idle">Play the C–C scale slowly (8 white keys) so Notolovac learns your piano, room, and microphone.</string>
+    <string name="scale_status_silence_start">One second of silence… Measuring room background noise (don\'t press keys).</string>
+    <string name="scale_status_silence_loud">Hearing sound — wait one quiet second so I can measure room noise…</string>
+    <string name="scale_status_silence_measuring">One second of silence… Measuring room background noise.</string>
+    <string name="scale_status_silence_done">Silence measured! Now press %1$s and hold briefly.</string>
+    <string name="scale_status_press_key">Press %1$s and hold briefly.</string>
+    <string name="scale_status_hold_key">Hold %1$s a moment longer (%2$d/%3$d)…</string>
+    <string name="scale_status_note_done">Great! %1$s recorded — now press %2$s.</string>
+    <string name="scale_status_locking_note">Hearing %1$s (%2$s, %3$s%4$d ct) — hold briefly (%5$d/%6$d)…</string>
+    <string name="scale_status_next_key">Now press the next key: %1$s.</string>
+    <string name="scale_status_wrong_note">Heard %1$s (%2$s) — for this step press %3$s!</string>
+    <string name="scale_status_completed">Your piano profile is saved! C4 = %1$s (%2$s%3$d ct • A4 ≈ %4$s).</string>
+    <string name="scale_status_completed_clip_tip"> Tip: microphone is a bit too close — move the phone back 15–20 cm.</string>
+
+    <!-- About App Dialog -->
+    <string name="about_fox_image_desc">Fox playing the piano</string>
+    <string name="about_title_format">Elena\'s Little Notolovac – version %1$s</string>
+    <string name="about_privacy_safety_body">This app is completely free, collects zero data, has no internet access, and is completely safe for children.</string>
+    <string name="about_community_donation_body">Visit bloom-it.rs/freebies for more information, and if you wish, you can donate a little to help stray cats and dogs in Belgrade.</string>
     <string name="about_website_url">https://bloom-it.rs/freebies/</string>
-    <string name="about_website_cta">Poseti bloom-it.rs/freebies</string>
+    <string name="about_website_cta">Visit bloom-it.rs/freebies</string>
+
+    <!-- Parental Gate -->
+    <string name="parental_gate_title">Parents Only</string>
+    <string name="parental_gate_body">To open this external link, please solve a quick question for grown-ups:</string>
+    <string name="parental_gate_question_format">What is %1$d × %2$d?</string>
+    <string name="parental_gate_answer_label">Enter answer</string>
+    <string name="parental_gate_wrong_answer">Not quite right — try this new question.</string>
+    <string name="parental_gate_confirm_cta">Open Link</string>
 </resources>

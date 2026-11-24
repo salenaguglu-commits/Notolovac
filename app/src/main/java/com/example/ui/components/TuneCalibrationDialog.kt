@@ -144,7 +144,7 @@ fun TuneCalibrationDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Zatvori",
+                            contentDescription = stringResource(R.string.action_close),
                             tint = MutedInk
                         )
                     }
@@ -309,7 +309,7 @@ fun TuneCalibrationDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "Mikrofon",
+                                    text = stringResource(R.string.tune_mic_label),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MutedInk
                                 )
@@ -334,7 +334,11 @@ fun TuneCalibrationDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "Potvrda ${state.lockedSamples}/${state.requiredSamples}",
+                                    text = stringResource(
+                                        R.string.tune_confirm_progress,
+                                        state.lockedSamples,
+                                        state.requiredSamples
+                                    ),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = if (isSavedPhase) OnSageMintContainer else MutedInk
@@ -355,7 +359,7 @@ fun TuneCalibrationDialog(
 
                         // Honest, actionable status / retry message
                         Text(
-                            text = state.statusMessage,
+                            text = state.statusMessage.ifBlank { stringResource(R.string.tune_status_idle_default) },
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = if (isWarningPhase || isSavedPhase) FontWeight.SemiBold else FontWeight.Normal,
                             color = when {
@@ -386,7 +390,10 @@ fun TuneCalibrationDialog(
                     ) {
                         Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Gotovo — koristi ovaj štim", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            text = stringResource(R.string.tune_done_use_tuning),
+                            style = MaterialTheme.typography.labelLarge
+                        )
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -402,7 +409,11 @@ fun TuneCalibrationDialog(
                     ) {
                         Icon(imageVector = Icons.Filled.Mic, contentDescription = null, tint = SageMintSecondary)
                         Spacer(Modifier.width(8.dp))
-                        Text("Izmeri C ponovo", color = WarmInk, style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            text = stringResource(R.string.tune_remeasure_c),
+                            color = WarmInk,
+                            style = MaterialTheme.typography.labelLarge
+                        )
                     }
                 } else {
                     Button(
@@ -424,9 +435,9 @@ fun TuneCalibrationDialog(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = if (state.isListening) {
-                                "Zaustavi slušanje"
+                                stringResource(R.string.tune_stop_listening)
                             } else if (state.savedIsCalibrated) {
-                                "Izmeri moje C ponovo"
+                                stringResource(R.string.tune_remeasure_my_c)
                             } else {
                                 stringResource(R.string.tune_start_listening)
                             },
@@ -518,9 +529,9 @@ private fun SavedCalibrationStatusCard(state: TuneDialogState) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = when {
-                        state.savedProfile.isScaleCalibrated -> "Sačuvan profil tvog klavira (Skala Do–Do)"
-                        state.savedIsCalibrated -> "Sačuvan štim tvog klavira (Brzi C)"
-                        else -> "Aktivan standardni štim (nije kalibrisano)"
+                        state.savedProfile.isScaleCalibrated -> stringResource(R.string.tune_saved_profile_scale)
+                        state.savedIsCalibrated -> stringResource(R.string.tune_saved_profile_quick)
+                        else -> stringResource(R.string.tune_saved_profile_standard)
                     },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
@@ -535,7 +546,7 @@ private fun SavedCalibrationStatusCard(state: TuneDialogState) {
                     val stretchCt = state.savedProfile.octaveStretchCentsPerOctave.roundToInt()
                     val stretchSign = if (stretchCt > 0) "+" else ""
                     Text(
-                        text = "Soba i dinamika kalibrisani • Razvučenost oktave: $stretchSign${stretchCt} ct",
+                        text = stringResource(R.string.tune_room_stretch_info, stretchSign, stretchCt),
                         style = MaterialTheme.typography.labelSmall,
                         color = OnSageMintContainer.copy(alpha = 0.85f)
                     )
@@ -639,37 +650,40 @@ private fun LiveHeardNotePill(state: TuneDialogState) {
             SageMintSecondary,
             Color.White,
             Icons.Filled.CheckCircle,
-            "Sačuvano: ${state.heardNoteName ?: "Do (C4)"}"
+            stringResource(R.string.tune_pill_saved, state.heardNoteName ?: "Do (C4)")
         )
         TunePhase.WRONG_NOTE -> Quad(
             CoralPrimary,
             Color.White,
             Icons.Filled.ErrorOutline,
-            "Čuo sam: ${state.heardNoteName ?: "?"} (${rawHzText ?: ""}) — nije C!"
+            stringResource(R.string.tune_pill_wrong_note, state.heardNoteName ?: "?", rawHzText ?: "")
         )
         TunePhase.RETRY_UNSTABLE -> Quad(
             CoralPrimary,
             Color.White,
             Icons.Filled.ErrorOutline,
-            "Pritisni C opet (${state.heardNoteName ?: "nestabilan ton"})"
+            stringResource(
+                R.string.tune_pill_retry,
+                state.heardNoteName ?: stringResource(R.string.tune_pill_unstable_tone)
+            )
         )
         TunePhase.LOCKING_C -> Quad(
             HoneyGoldTertiary,
             WarmInk,
             Icons.Filled.MusicNote,
-            "Čujem: ${state.heardNoteName ?: "C"} (${rawHzText ?: ""})"
+            stringResource(R.string.tune_pill_locking, state.heardNoteName ?: "C", rawHzText ?: "")
         )
         TunePhase.LISTENING -> Quad(
             WarmCard,
             MutedInk,
             Icons.Filled.Mic,
-            "Čekam zvuk klavira..."
+            stringResource(R.string.tune_pill_waiting)
         )
         TunePhase.IDLE -> Quad(
             WarmCard,
             MutedInk,
             Icons.Filled.Tune,
-            "Spremno za merenje C"
+            stringResource(R.string.tune_pill_ready)
         )
     }
 

@@ -1,6 +1,8 @@
 package com.example
 
+import com.example.audio.KeyboardPerformanceRecorder
 import com.example.audio.PolyphonicPianoMixer
+import com.example.model.NoteDuration
 import com.example.ui.components.PianoKeyboardHitTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,5 +97,42 @@ class PolyphonicKeyboardAndMixerTest {
         assertNull(PianoKeyboardHitTest.hitTest(1505f, 100f, width, height, whiteKeys, blackKeys))
         assertNull(PianoKeyboardHitTest.hitTest(500f, -1f, width, height, whiteKeys, blackKeys))
         assertNull(PianoKeyboardHitTest.hitTest(500f, 205f, width, height, whiteKeys, blackKeys))
+    }
+
+    @Test
+    fun recordsTouchKeyboardMelodyAndQuantizesDurations() {
+        val recorder = KeyboardPerformanceRecorder()
+        assertFalse(recorder.isRecording)
+
+        recorder.start()
+        assertTrue(recorder.isRecording)
+
+        // Play C4 (1/4), D4 (1/4), E4 (1/4), G4 (1/2) at ~120 BPM (500ms per beat)
+        recorder.onKeyPressed(60, 1000L)
+        recorder.onKeyReleased(60, 1460L)
+
+        recorder.onKeyPressed(62, 1500L)
+        recorder.onKeyReleased(62, 1960L)
+
+        recorder.onKeyPressed(64, 2000L)
+        recorder.onKeyReleased(64, 2460L)
+
+        val liveNotes = recorder.onKeyPressed(67, 2500L)
+        assertEquals(4, liveNotes.size)
+        // Leave last key held until Finish is tapped at 3560L (~1060ms -> half note)
+        val result = recorder.finishAndQuantize(
+            endTimestampMs = 3560L,
+            fallbackBpm = 120,
+            lockToMetronomeBpm = true
+        )
+
+        assertFalse(recorder.isRecording)
+        val pitched = result.notes.filter { !it.isRest }
+        assertEquals(listOf(60, 62, 64, 67), pitched.map { it.midiNote })
+        assertEquals(NoteDuration.QUARTER, pitched[0].duration)
+        assertEquals(NoteDuration.QUARTER, pitched[1].duration)
+        assertEquals(NoteDuration.QUARTER, pitched[2].duration)
+        assertEquals(NoteDuration.HALF, pitched[3].duration)
+        assertEquals(120, result.effectiveBpm)
     }
 }

@@ -20,10 +20,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
@@ -32,9 +35,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +54,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -62,11 +73,12 @@ import com.example.ui.theme.SageMintSecondary
 import com.example.ui.theme.WarmCardBorder
 import com.example.ui.theme.WarmInk
 import com.example.ui.theme.WarmSurface
+import kotlin.random.Random
 
 /**
  * Storybook "About App" dialog revealed by long-pressing the kitten mascot icon in the header.
  * Features the watercolor piano-playing fox illustration, app version, zero-data/offline safety
- * guarantee, and invitation to visit bloom-it.rs/freebies or support Belgrade's homeless pets.
+ * guarantee, and a parental-gated link to bloom-it.rs/freebies or supporting Belgrade's stray pets.
  */
 @Composable
 fun AboutAppDialog(
@@ -75,6 +87,7 @@ fun AboutAppDialog(
     val context = LocalContext.current
     val websiteUrl = stringResource(R.string.about_website_url)
     val scrollState = rememberScrollState()
+    var showParentalGate by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -219,12 +232,7 @@ fun AboutAppDialog(
                         }
 
                         Button(
-                            onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(websiteUrl))
-                                    context.startActivity(intent)
-                                }
-                            },
+                            onClick = { showParentalGate = true },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = CoralPrimary,
@@ -271,6 +279,213 @@ fun AboutAppDialog(
                         fontWeight = FontWeight.SemiBold,
                         color = WarmInk
                     )
+                }
+            }
+        }
+    }
+
+    if (showParentalGate) {
+        ParentalGateDialog(
+            onDismiss = { showParentalGate = false },
+            onPassed = {
+                showParentalGate = false
+                runCatching {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(websiteUrl))
+                    context.startActivity(intent)
+                }
+            }
+        )
+    }
+}
+
+private data class ParentalGateChallenge(
+    val left: Int,
+    val right: Int
+) {
+    val expectedAnswer: Int get() = left * right
+
+    companion object {
+        fun next(previous: ParentalGateChallenge? = null): ParentalGateChallenge {
+            var candidate: ParentalGateChallenge
+            do {
+                candidate = ParentalGateChallenge(
+                    left = Random.nextInt(6, 10),
+                    right = Random.nextInt(4, 10)
+                )
+            } while (candidate == previous)
+            return candidate
+        }
+    }
+}
+
+@Composable
+private fun ParentalGateDialog(
+    onDismiss: () -> Unit,
+    onPassed: () -> Unit
+) {
+    var challenge by remember { mutableStateOf(ParentalGateChallenge.next()) }
+    var answerText by remember { mutableStateOf("") }
+    var showError by remember { mutableStateOf(false) }
+
+    fun verifyAnswer() {
+        val parsed = answerText.trim().toIntOrNull()
+        if (parsed == challenge.expectedAnswer) {
+            onPassed()
+        } else {
+            showError = true
+            answerText = ""
+            challenge = ParentalGateChallenge.next(previous = challenge)
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = CreamPaper,
+            border = BorderStroke(1.5.dp, WarmCardBorder),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .widthIn(max = 400.dp)
+                .testTag("parental_gate_dialog")
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(HoneyGoldContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Lock,
+                        contentDescription = null,
+                        tint = CoralPrimary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Text(
+                    text = stringResource(R.string.parental_gate_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = WarmInk,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = stringResource(R.string.parental_gate_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MutedInk,
+                    textAlign = TextAlign.Center
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = SageMintContainer.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, SageMintSecondary.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.parental_gate_question_format,
+                            challenge.left,
+                            challenge.right
+                        ),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = OnSageMintContainer,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = answerText,
+                    onValueChange = { raw ->
+                        answerText = raw.filter { it.isDigit() }.take(3)
+                        if (showError) showError = false
+                    },
+                    label = { Text(stringResource(R.string.parental_gate_answer_label)) },
+                    singleLine = true,
+                    isError = showError,
+                    supportingText = if (showError) {
+                        { Text(stringResource(R.string.parental_gate_wrong_answer)) }
+                    } else {
+                        null
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            if (answerText.isNotBlank()) verifyAnswer()
+                        }
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CoralPrimary,
+                        unfocusedBorderColor = WarmCardBorder,
+                        focusedLabelColor = CoralPrimary,
+                        cursorColor = CoralPrimary
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("parental_gate_answer_input")
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.2.dp, WarmCardBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = WarmSurface,
+                            contentColor = WarmInk
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("parental_gate_cancel_button")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.action_cancel),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Button(
+                        onClick = { verifyAnswer() },
+                        enabled = answerText.isNotBlank(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CoralPrimary,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("parental_gate_confirm_button")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.parental_gate_confirm_cta),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }

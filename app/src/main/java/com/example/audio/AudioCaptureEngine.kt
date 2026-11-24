@@ -17,6 +17,8 @@ data class AudioPitchFrame(
     val timestampMs: Long
 )
 
+class MicrophoneUnavailableException : IllegalStateException("Microphone unavailable")
+
 /**
  * Captures real-time mono 16-bit PCM audio from the device microphone using standard AudioSource.MIC
  * with a fast 2048-sample Hann analysis window (~46ms) and 512-sample hop (~11.6ms update rate),
@@ -33,7 +35,7 @@ class AudioCaptureEngine(
         calibrationProfile: PianoCalibrationProfile? = null
     ): Flow<AudioPitchFrame> = flow {
         val (audioRecord, actualSampleRate) = createAudioRecord()
-            ?: throw IllegalStateException("Mikrofon trenutno nije dostupan.")
+            ?: throw MicrophoneUnavailableException()
 
         val engine = PianoPitchEngine(
             sampleRate = actualSampleRate,

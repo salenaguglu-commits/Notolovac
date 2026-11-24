@@ -1,0 +1,212 @@
+<resources>
+    <string name="app_name">Notolovac</string>
+    <string name="tab_studio">Studio</string>
+    <string name="tab_notebook">Moja sveska</string>
+
+    <!-- Studio & Recording -->
+    <string name="studio_subtitle_listening">Hvatam tvoje note…</string>
+    <string name="studio_subtitle_default">Tvoja muzička sveska</string>
+    <string name="studio_mascot_desc">Notolovac maskota — zadrži za informacije o aplikaciji</string>
+    <string name="studio_tune_profile_saved">Profil klavira</string>
+    <string name="studio_tune_saved">Štim sačuvan</string>
+    <string name="studio_tune_standard">Standard 440 Hz</string>
+    <string name="action_listen_now">Slušaj sada</string>
+    <string name="action_stop_listening">Završi snimanje</string>
+    <string name="action_record_play">Snimi svirku</string>
+    <string name="action_stop_record_play">Završi</string>
+    <string name="action_tune_c">Štimuj C</string>
+    <string name="action_play_melody">Pusti melodiju</string>
+    <string name="action_stop_playback">Zaustavi</string>
+    <string name="action_save_song">Sačuvaj u svesku</string>
+    <string name="action_saved_check">Sačuvano ✓</string>
+    <string name="action_share_image">Podeli sliku</string>
+    <string name="action_back">Nazad</string>
+    <string name="action_delete">Obriši</string>
+    <string name="action_cancel">Odustani</string>
+    <string name="action_allow">Dozvoli</string>
+    <string name="action_close">Zatvori</string>
+
+    <!-- Live Staff & Keyboard -->
+    <string name="label_mode_solfege">Do-Re-Mi</string>
+    <string name="label_mode_letters">C-D-E</string>
+    <string name="label_mode_clean">Čisto</string>
+    <string name="live_badge_listening">Slušam (%1$d)</string>
+    <string name="live_badge_recording_keys">SNIMA (%1$d)</string>
+    <string name="live_badge_sheet">Notni list</string>
+    <string name="studio_mic_clipping_hint">Malo preglasno za mikrofon — odmakni telefon korak od klavira za još čistije note.</string>
+    <string name="studio_empty_staff_hint">Pritisni „Slušaj sada“ i odsviraj melodiju na klaviru, ili isprobaj dirke ispod!</string>
+    <string name="studio_keyboard_title">Svetleća klavijatura</string>
+    <string name="keyboard_octave_range">Opseg dirki:</string>
+    <string name="landscape_clear_staff_desc">Očisti note sa linija</string>
+
+    <!-- Metronome -->
+    <string name="metronome_title">Metronom</string>
+    <string name="metronome_start_desc">Pokreni metronom</string>
+    <string name="metronome_stop_desc">Zaustavi metronom</string>
+    <string name="metronome_tempo_down_desc">Smanji tempo</string>
+    <string name="metronome_tempo_up_desc">Povećaj tempo</string>
+
+    <!-- Permissions -->
+    <string name="permission_mic_title">Potreban je mikrofon</string>
+    <string name="permission_mic_body">Notolovcu je potreban pristup mikrofonu da bi čuo tvoj klavir i nacrtao note. Zvuk ostaje samo na tvom uređaju.</string>
+    <string name="permission_mic_allow">Dozvoli mikrofon</string>
+    <string name="error_mic_permission_denied">Bez dozvole za mikrofon Notolovac ne može da čuje klavir.</string>
+    <string name="error_mic_unavailable">Mikrofon trenutno nije dostupan.</string>
+    <string name="error_mic_start_failed">Greška pri pokretanju mikrofona.</string>
+
+    <!-- Notebook -->
+    <string name="notebook_subtitle_empty">Ovde čuvaš sve svoje melodije</string>
+    <string name="notebook_subtitle_count">Sačuvano pesmica: %1$d</string>
+    <string name="empty_notebook_title">Tvoja muzička sveska je još prazna!</string>
+    <string name="empty_notebook_body">Pritisni „Slušaj sada“, odsviraj svoju prvu melodiju na klaviru i sačuvaj je ovde.</string>
+    <string name="empty_notebook_mascot_desc">Notolovac lisica hvata note</string>
+    <string name="empty_notebook_cta">Snimi prvu melodiju</string>
+    <string name="delete_song_dialog_title">Obrisati pesmicu?</string>
+    <string name="delete_song_dialog_body">Da li sigurno želiš da obrišeš „%1$s“ iz svoje sveske?</string>
+    <string name="note_count_label">%1$d nota</string>
+    <string name="sheet_meta_format">%1$d nota • %2$d BPM • %3$d/4</string>
+
+    <!-- Sheet Result & Note Editor -->
+    <string name="action_edit_notes">Izmeni</string>
+    <string name="action_done_editing">Gotovo</string>
+    <string name="edit_mode_badge">Režim izmene</string>
+    <string name="edit_sheet_hint_active">Skroluj note gore-dole i dodirni bilo koju notu, a menjaj je u panelu ispod.</string>
+    <string name="edit_sheet_hint_view">Savet: Pritisni „Izmeni“ ili dodirni bilo koju notu da je čuješ, pomeriš ili promeniš trajanje.</string>
+    <string name="edit_tap_key_hint">Dodirni dirku:</string>
+    <string name="edit_pitch_section">Visina note (pomeri gore/dole)</string>
+    <string name="edit_pitch_down">Niže</string>
+    <string name="edit_pitch_up">Više</string>
+    <string name="edit_keyboard_hint">Ili jednostavno dodirni tačnu dirku na klavijaturi ispod!</string>
+    <string name="edit_duration_section">Dužina trajanja note</string>
+    <string name="edit_add_note">Dodaj</string>
+    <string name="edit_add_note_desc">Dodaj notu</string>
+    <string name="edit_prev_note_desc">Prethodna nota</string>
+    <string name="edit_next_note_desc">Sledeća nota</string>
+    <string name="edit_rest_label">Pauza</string>
+    <string name="edit_rest_with_duration">Pauza (%1$s)</string>
+    <string name="edit_convert_rest">Pretvori pauzu u notu</string>
+    <string name="edit_audition_short">Čuj</string>
+    <string name="edit_audition_desc">Poslušaj notu</string>
+    <string name="edit_this_note_desc">Izmeni ovu notu</string>
+    <string name="edit_remove_note_desc">Ukloni notu</string>
+    <string name="edit_hide_keyboard_desc">Sakrij klavijaturu</string>
+    <string name="edit_show_keyboard_desc">Prikaži klavijaturu</string>
+
+    <!-- Note Durations -->
+    <string name="duration_sixteenth">Šesnaestina (1/16)</string>
+    <string name="duration_eighth">Osmina (1/8)</string>
+    <string name="duration_quarter">Četvrtina (1/4)</string>
+    <string name="duration_half">Polovina (1/2)</string>
+    <string name="duration_whole">Cela nota (1/1)</string>
+    <string name="duration_short_sixteenth">Šes.</string>
+    <string name="duration_short_eighth">Osm.</string>
+    <string name="duration_short_quarter">Čet.</string>
+    <string name="duration_short_half">Pol.</string>
+    <string name="duration_short_whole">Cela</string>
+
+    <!-- Export & Share -->
+    <string name="share_sheet_chooser">Podeli notni zapis</string>
+    <string name="error_share_export_failed">Nije uspelo pravljenje slike notnog zapisa.</string>
+    <string name="default_song_title">Moja nova melodija</string>
+    <string name="default_song_title_short">Moja melodija</string>
+    <string name="default_numbered_melody_title">Moja melodija #%1$d</string>
+    <string name="export_footer_watermark">Napravljeno u aplikaciji Notolovac</string>
+
+    <!-- Snackbar & Status Messages -->
+    <string name="msg_no_piano_notes_heard">Nisam uspeo da čujem note klavira. Pokušaj malo glasnije ili bliže klaviru!</string>
+    <string name="msg_no_keyboard_notes_recorded">Odsviraj bar jednu dirku pre završetka snimanja!</string>
+    <string name="msg_add_note_before_saving">Dodaj bar jednu notu pre čuvanja.</string>
+    <string name="msg_saved_to_notebook">Sačuvano u tvoju muzičku svesku!</string>
+    <string name="msg_song_deleted">Pesmica „%1$s“ je obrisana.</string>
+    <string name="msg_tuning_reset_snackbar">Štimovanje vraćeno na standardnih 440 Hz.</string>
+    <string name="msg_scale_profile_saved_snackbar">Sačuvan profil klavira (Skala Do–Do): C4 = %1$s (%2$s%3$d ct)</string>
+    <string name="msg_quick_c_saved_snackbar">Sačuvan štim klavira: C4 = %1$s (%2$s%3$d ct)</string>
+
+    <!-- Tune / Piano Calibration Dialog -->
+    <string name="tune_dialog_title">Kalibracija tvog klavira</string>
+    <string name="tune_dialog_subtitle">Prilagodi Notolovac tačnom štimu, dinamici i sobi tvog klavira.</string>
+    <string name="tune_mode_quick_c">Brzi štim (Do)</string>
+    <string name="tune_mode_full_scale">Skala Do–Do</string>
+    <string name="tune_play_reference">Poslušaj primer C</string>
+    <string name="tune_start_listening">Slušaj moje C</string>
+    <string name="tune_stop_listening">Zaustavi slušanje</string>
+    <string name="tune_remeasure_my_c">Izmeri moje C ponovo</string>
+    <string name="tune_remeasure_c">Izmeri C ponovo</string>
+    <string name="tune_done_use_tuning">Gotovo — koristi ovaj štim</string>
+    <string name="tune_reset_standard">Vrati na 440 Hz</string>
+    <string name="tune_mic_label">Mikrofon</string>
+    <string name="tune_confirm_progress">Potvrda %1$d/%2$d</string>
+
+    <string name="tune_saved_profile_scale">Sačuvan profil tvog klavira (Skala Do–Do)</string>
+    <string name="tune_saved_profile_quick">Sačuvan štim tvog klavira (Brzi C)</string>
+    <string name="tune_saved_profile_standard">Aktivan standardni štim (nije kalibrisano)</string>
+    <string name="tune_room_stretch_info">Soba i dinamika kalibrisani • Razvučenost oktave: %1$s%2$d ct</string>
+
+    <string name="tune_pill_saved">Sačuvano: %1$s</string>
+    <string name="tune_pill_wrong_note">Čuo sam: %1$s (%2$s) — nije C!</string>
+    <string name="tune_pill_retry">Pritisni C opet (%1$s)</string>
+    <string name="tune_pill_unstable_tone">nestabilan ton</string>
+    <string name="tune_pill_locking">Čujem: %1$s (%2$s)</string>
+    <string name="tune_pill_waiting">Čekam zvuk klavira…</string>
+    <string name="tune_pill_ready">Spremno za merenje C</string>
+
+    <string name="tune_status_idle_saved">Tvoj štim je već sačuvan i aktivan. Možeš ponovo da izmeriš C ako želiš.</string>
+    <string name="tune_status_idle_default">Pritisni „Slušaj moje C“, zatim pritisni i zadrži srednje C (Do) 1–2 sekunde.</string>
+    <string name="tune_status_reset_done">Vraćeno na standardni štim (C4 = 261.6 Hz, A4 = 440.0 Hz).</string>
+    <string name="tune_status_listening_prompt">Slušam mikrofon… Pritisni i zadrži jednu dirku C (Do) 1–2 sekunde.</string>
+    <string name="tune_status_unstable">Čuo sam %1$s (%2$s, %3$s%4$d ct), ali ton nije stabilan. Pritisni opet samo jednu dirku C!</string>
+    <string name="tune_status_locking">Čujem %1$s (%2$s, %3$s%4$d ct) — zadrži dirku još trenutak (%5$d/%6$d)…</string>
+    <string name="tune_status_saved">Štim tvog klavira je sačuvan! C4 = %1$s (%2$s%3$d ct • A4 ≈ %4$s). Sve note se od sada prepoznaju po ovom štimu.</string>
+    <string name="tune_status_wrong_note">Čuo sam notu %1$s (%2$s) — to nije C. Pritisni dirku C (Do) opet!</string>
+    <string name="tune_status_too_short">Čuo sam C (%1$s, %2$s%3$d ct), ali ton je bio prekratak. Pritisni C opet i zadrži dirku 1–2 sekunde!</string>
+    <string name="tune_status_no_sound_yet">Još ne čujem jasan ton klavira. Približi telefon klaviru i pritisni C malo jače!</string>
+
+    <!-- Full Scale Calibration -->
+    <string name="scale_cal_start">Pokreni kalibraciju skale</string>
+    <string name="scale_cal_stop">Zaustavi kalibraciju</string>
+    <string name="scale_cal_retry">Kalibriši skalu ponovo</string>
+    <string name="scale_cal_use_profile">Gotovo — koristi ovaj profil</string>
+    <string name="scale_silence_label">Tišina</string>
+    <string name="scale_pill_saved">Profil klavira sačuvan (8/8)</string>
+    <string name="scale_pill_wrong_note">Čuo sam %1$s — pritisni %2$s</string>
+    <string name="scale_pill_silence">Korak 1: Tišina sobe</string>
+    <string name="scale_pill_play_note">Sada sviraj: %1$s</string>
+    <string name="scale_pill_listening">Slušam…</string>
+    <string name="scale_pill_ready">Skala Do4 – Do5 (~15 sek)</string>
+    <string name="scale_room_quiet">Tiha soba</string>
+    <string name="scale_room_moderate">Umeren šum</string>
+    <string name="scale_room_noisy">Bučnija soba</string>
+    <string name="scale_chip_room">Soba: %1$s</string>
+    <string name="scale_chip_octave">Oktava: %1$s%2$d ct</string>
+    <string name="scale_clipping_warning">Telefon je vrlo blizu klavira — odmakni ga 15–20 cm za najčistije note.</string>
+
+    <string name="scale_status_idle">Odsviraj polako skalu Do–Do (8 belih dirki) da Notolovac upozna tvoj klavir, sobu i mikrofon.</string>
+    <string name="scale_status_silence_start">Sekund tišine… Merim pozadinski šum sobe (ne pritiskaj dirke).</string>
+    <string name="scale_status_silence_loud">Čujem zvuk — sačekaj sekund tišine da izmerim šum sobe…</string>
+    <string name="scale_status_silence_measuring">Sekund tišine… Merim pozadinski šum sobe.</string>
+    <string name="scale_status_silence_done">Tišina izmerena! Sada pritisni %1$s i zadrži kratko.</string>
+    <string name="scale_status_press_key">Pritisni dirku %1$s i zadrži kratko.</string>
+    <string name="scale_status_hold_key">Zadrži %1$s još trenutak (%2$d/%3$d)…</string>
+    <string name="scale_status_note_done">Odlično! %1$s zabeležen — sada pritisni %2$s.</string>
+    <string name="scale_status_locking_note">Čujem %1$s (%2$s, %3$s%4$d ct) — zadrži kratko (%5$d/%6$d)…</string>
+    <string name="scale_status_next_key">Sada pritisni sledeću dirku: %1$s.</string>
+    <string name="scale_status_wrong_note">Čuo sam %1$s (%2$s) — za ovaj korak pritisni %3$s!</string>
+    <string name="scale_status_completed">Profil tvog klavira je sačuvan! C4 = %1$s (%2$s%3$d ct • A4 ≈ %4$s).</string>
+    <string name="scale_status_completed_clip_tip"> Savet: mikrofon je malo preblizu klaviru — odmakni telefon 15–20 cm.</string>
+
+    <!-- About App Dialog -->
+    <string name="about_fox_image_desc">Lisica koja svira klavir</string>
+    <string name="about_title_format">Elenin mali Notolovac – verzija %1$s</string>
+    <string name="about_privacy_safety_body">Ova aplikacija je potpuno besplatna, ne sakuplja nikakve podatke, nema fizički pristup internetu i potpuno je bezbedna za decu.</string>
+    <string name="about_community_donation_body">Za više informacija posetite bloom-it.rs/freebies, a ko želi, može da donira neki dinar za mace i kuce Beograda koje nemaju svoj dom.</string>
+    <string name="about_website_url">https://bloom-it.rs/freebies/</string>
+    <string name="about_website_cta">Poseti bloom-it.rs/freebies</string>
+
+    <!-- Parental Gate -->
+    <string name="parental_gate_title">Roditeljska provera</string>
+    <string name="parental_gate_body">Da biste otvorili spoljni link, rešite kratak zadatak za odrasle:</string>
+    <string name="parental_gate_question_format">Koliko je %1$d × %2$d?</string>
+    <string name="parental_gate_answer_label">Unesite odgovor</string>
+    <string name="parental_gate_wrong_answer">Netačan odgovor — pokušajte novi zadatak.</string>
+    <string name="parental_gate_confirm_cta">Otvori link</string>
+</resources>

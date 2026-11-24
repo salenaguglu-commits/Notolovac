@@ -110,7 +110,7 @@ fun NotolovacApp(
                 PendingMicAction.NONE -> Unit
             }
         } else {
-            viewModel.showMessage("Bez dozvole za mikrofon Notolovac ne može da čuje klavir.")
+            viewModel.showMessage(context.getString(R.string.error_mic_permission_denied))
         }
         pendingAction = PendingMicAction.NONE
     }
@@ -166,7 +166,7 @@ fun NotolovacApp(
                     )
                 )
             } else {
-                viewModel.showMessage("Nije uspelo pravljenje slike notnog zapisa.")
+                viewModel.showMessage(context.getString(R.string.error_share_export_failed))
             }
         }
     }
@@ -296,10 +296,17 @@ fun NotolovacApp(
                             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         },
                         onListenToggle = {
+                            when {
+                                uiState.isKeyboardRecording -> viewModel.stopKeyboardRecording()
+                                uiState.isRecording -> viewModel.stopRecording()
+                                else -> requestMicAndRun(PendingMicAction.RECORD)
+                            }
+                        },
+                        onToggleKeyboardRecording = {
                             if (uiState.isRecording) {
                                 viewModel.stopRecording()
                             } else {
-                                requestMicAndRun(PendingMicAction.RECORD)
+                                viewModel.toggleKeyboardRecording()
                             }
                         },
                         onOpenTuneDialog = { viewModel.openTuneDialog() },

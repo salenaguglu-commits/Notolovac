@@ -35,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
@@ -111,6 +112,7 @@ fun StudioScreen(
     hasMicPermission: Boolean,
     onRequestMicPermission: () -> Unit,
     onListenToggle: () -> Unit,
+    onToggleKeyboardRecording: () -> Unit = {},
     onOpenTuneDialog: () -> Unit,
     onLabelModeSelected: (NoteLabelMode) -> Unit,
     onToggleMetronome: () -> Unit,
@@ -124,6 +126,7 @@ fun StudioScreen(
     modifier: Modifier = Modifier
 ) {
     val activeKeyMidi = uiState.liveMidiNote ?: uiState.keyboardPressedMidi
+    val isAnyRecording = uiState.isRecording || uiState.isKeyboardRecording
     val scrollState = rememberScrollState()
     var showAboutDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -135,6 +138,7 @@ fun StudioScreen(
         LandscapePianoStage(
             uiState = uiState,
             settings = settings,
+            onToggleKeyboardRecording = onToggleKeyboardRecording,
             onOctaveChange = onOctaveChange,
             onPianoKeyClick = onPianoKeyClick,
             onPianoKeyRelease = onPianoKeyRelease,
@@ -161,7 +165,7 @@ fun StudioScreen(
             // 1. Playful Notebook Header + "Štimuj C" calibration pill
             StudioHeaderRow(
                 settings = settings,
-                isRecording = uiState.isRecording,
+                isRecording = isAnyRecording,
                 onOpenTuneDialog = onOpenTuneDialog,
                 onLongPressMascot = { showAboutDialog = true }
             )
@@ -203,7 +207,7 @@ fun StudioScreen(
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                             modifier = Modifier.testTag("grant_mic_button")
                         ) {
-                            Text("Dozvoli", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.action_allow), style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
@@ -225,8 +229,8 @@ fun StudioScreen(
                 shape = RoundedCornerShape(24.dp),
                 color = Color(0xFFFFFDF8),
                 border = BorderStroke(
-                    width = if (uiState.isRecording) 2.5.dp else 1.5.dp,
-                    color = if (uiState.isRecording) CoralPrimary else WarmCardBorder
+                    width = if (isAnyRecording) 2.5.dp else 1.5.dp,
+                    color = if (isAnyRecording) CoralPrimary else WarmCardBorder
                 ),
                 shadowElevation = 3.dp,
                 modifier = Modifier.fillMaxWidth()
@@ -243,17 +247,29 @@ fun StudioScreen(
                         LiveNoteBadge(
                             liveMidiNote = uiState.liveMidiNote,
                             isRecording = uiState.isRecording,
-                            capturedCount = uiState.liveCapturedNotes.size
+                            isKeyboardRecording = uiState.isKeyboardRecording,
+                            capturedCount = if (uiState.isKeyboardRecording) {
+                                uiState.keyboardRecordedNotes.size
+                            } else {
+                                uiState.liveCapturedNotes.size
+                            }
                         )
 
-                        if (uiState.isRecording) {
+                        if (isAnyRecording) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                SoundLevelBars(rms = uiState.rmsLevel)
-                                val mins = uiState.recordingElapsedSeconds / 60
-                                val secs = uiState.recordingElapsedSeconds % 60
+                                if (uiState.isRecording) {
+                                    SoundLevelBars(rms = uiState.rmsLevel)
+                                }
+                                val elapsed = if (uiState.isKeyboardRecording) {
+                                    uiState.keyboardRecordingElapsedSeconds
+                                } else {
+                                    uiState.recordingElapsedSeconds
+                                }
+                                val mins = elapsed / 60
+                                val secs = elapsed % 60
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = CoralContainer
@@ -267,7 +283,7 @@ fun StudioScreen(
                                 }
                             }
                         } else {
-                            // Label mode quick switcher (Do-Re-Mi / C-D-E / Čisto)
+                            // Label mode quick switcher (Do-Re-Mi / C-D-E / Clean)
                             NoteLabelModeRow(
                                 selectedMode = settings.noteLabelMode,
                                 onSelect = onLabelModeSelected
@@ -279,10 +295,10 @@ fun StudioScreen(
 
                     // Live Canvas Sheet Music Strip
                     LiveSheetStrip(
-                        capturedNotes = if (uiState.isRecording || uiState.liveCapturedNotes.isNotEmpty()) {
-                            uiState.liveCapturedNotes
-                        } else {
-                            uiState.keyboardPlayedHistory
+                        capturedNotes = when {
+                            uiState.isKeyboardRecording -> uiState.keyboardRecordedNotes
+                            uiState.isRecording || uiState.liveCapturedNotes.isNotEmpty() -> uiState.liveCapturedNotes
+                            else -> uiState.keyboardPlayedHistory
                         },
                         liveMidiNote = uiState.liveMidiNote,
                         liveMidiNotes = uiState.keyboardActiveNotes,
@@ -301,7 +317,7 @@ fun StudioScreen(
                                 .testTag("mic_clipping_hint")
                         ) {
                             Text(
-                                text = "Malo preglasno za mikrofon — odmakni telefon korak od klavira za još čistije note.",
+                                text = stringResource(R.string.studio_mic_clipping_hint),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = WarmInk,
@@ -310,9 +326,9 @@ fun StudioScreen(
                         }
                     }
 
-                    if (!uiState.isRecording && uiState.liveCapturedNotes.isEmpty()) {
+                    if (!isAnyRecording && uiState.liveCapturedNotes.isEmpty()) {
                         Text(
-                            text = "Pritisni „Slušaj sada“ i odsviraj melodiju na klaviru, ili isprobaj dirke ispod!",
+                            text = stringResource(R.string.studio_empty_staff_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MutedInk,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -329,7 +345,7 @@ fun StudioScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Svetleća klavijatura",
+                        text = stringResource(R.string.studio_keyboard_title),
                         style = MaterialTheme.typography.titleSmall,
                         color = WarmInk
                     )
@@ -353,7 +369,7 @@ fun StudioScreen(
             // 5. Big Inviting "Slušaj sada" / "Završi snimanje" Primary Button
             Spacer(Modifier.height(4.dp))
             ListenNowButton(
-                isRecording = uiState.isRecording,
+                isRecording = isAnyRecording,
                 onClick = onListenToggle
             )
             Spacer(Modifier.height(8.dp))
@@ -364,12 +380,13 @@ fun StudioScreen(
 /**
  * Full-width distraction-free Landscape Piano Stage:
  * Hides top header, metronome, tuner, and navigation so the child gets a wide dynamic live staff
- * on top and a tall, spacious 2-octave multi-touch/glissando keyboard across the bottom.
+ * on top, a 1-tap "Snimi svirku" / "Record Play" button, and a tall 2-octave multi-touch/glissando keyboard below.
  */
 @Composable
 private fun LandscapePianoStage(
     uiState: NotolovacUiState,
     settings: UserSettings,
+    onToggleKeyboardRecording: () -> Unit,
     onOctaveChange: (Int) -> Unit,
     onPianoKeyClick: (Int) -> Unit,
     onPianoKeyRelease: (Int) -> Unit,
@@ -377,10 +394,16 @@ private fun LandscapePianoStage(
     modifier: Modifier = Modifier
 ) {
     val activeKeyMidi = uiState.liveMidiNote ?: uiState.keyboardPressedMidi
-    val displayedNotes = if (uiState.isRecording || uiState.liveCapturedNotes.isNotEmpty()) {
-        uiState.liveCapturedNotes
+    val isAnyRecording = uiState.isRecording || uiState.isKeyboardRecording
+    val displayedNotes = when {
+        uiState.isKeyboardRecording -> uiState.keyboardRecordedNotes
+        uiState.isRecording || uiState.liveCapturedNotes.isNotEmpty() -> uiState.liveCapturedNotes
+        else -> uiState.keyboardPlayedHistory
+    }
+    val elapsedSeconds = if (uiState.isKeyboardRecording) {
+        uiState.keyboardRecordingElapsedSeconds
     } else {
-        uiState.keyboardPlayedHistory
+        uiState.recordingElapsedSeconds
     }
 
     Column(
@@ -396,8 +419,8 @@ private fun LandscapePianoStage(
             shape = RoundedCornerShape(18.dp),
             color = Color(0xFFFFFDF8),
             border = BorderStroke(
-                width = if (uiState.isRecording) 2.dp else 1.5.dp,
-                color = if (uiState.isRecording) CoralPrimary else WarmCardBorder
+                width = if (isAnyRecording) 2.5.dp else 1.5.dp,
+                color = if (isAnyRecording) CoralPrimary else WarmCardBorder
             ),
             shadowElevation = 2.dp,
             modifier = Modifier
@@ -416,15 +439,52 @@ private fun LandscapePianoStage(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Ultra-discreet octave toggle & clear staff controls tucked in top-right corner
+                // Compact live recording indicator in top-left while recording
+                if (isAnyRecording) {
+                    val recCount = if (uiState.isKeyboardRecording) {
+                        uiState.keyboardRecordedNotes.size
+                    } else {
+                        uiState.liveCapturedNotes.size
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = CoralContainer.copy(alpha = 0.94f),
+                        border = BorderStroke(1.dp, CoralPrimary),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 10.dp, top = 6.dp)
+                            .testTag("landscape_rec_badge")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FiberManualRecord,
+                                contentDescription = null,
+                                tint = Color(0xFFD64545),
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.live_badge_recording_keys, recCount),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = OnCoralContainer
+                            )
+                        }
+                    }
+                }
+
+                // Top-right compact stage controls: Clear Staff, Octave toggle, and "Snimi svirku" button
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (!uiState.isRecording && uiState.keyboardPlayedHistory.isNotEmpty()) {
+                    if (!isAnyRecording && uiState.keyboardPlayedHistory.isNotEmpty()) {
                         IconButton(
                             onClick = onClearKeyboardHistory,
                             modifier = Modifier
@@ -433,7 +493,7 @@ private fun LandscapePianoStage(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
-                                contentDescription = "Očisti note sa linija",
+                                contentDescription = stringResource(R.string.landscape_clear_staff_desc),
                                 tint = MutedInk,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -445,7 +505,7 @@ private fun LandscapePianoStage(
                     Surface(
                         onClick = { onOctaveChange(nextOctave) },
                         shape = RoundedCornerShape(10.dp),
-                        color = HoneyGoldContainer.copy(alpha = 0.88f),
+                        color = HoneyGoldContainer.copy(alpha = 0.92f),
                         border = BorderStroke(1.dp, HoneyGoldTertiary),
                         modifier = Modifier
                             .height(48.dp)
@@ -461,6 +521,44 @@ private fun LandscapePianoStage(
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = WarmInk
+                            )
+                        }
+                    }
+
+                    // Primary Landscape "Snimi svirku" / "Završi 0:05" pill button
+                    val mins = elapsedSeconds / 60
+                    val secs = elapsedSeconds % 60
+                    val recordLabel = if (isAnyRecording) {
+                        "${stringResource(R.string.action_stop_record_play)} ${String.format("%d:%02d", mins, secs)}"
+                    } else {
+                        stringResource(R.string.action_record_play)
+                    }
+                    Surface(
+                        onClick = onToggleKeyboardRecording,
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isAnyRecording) Color(0xFFD64545) else CoralPrimary,
+                        shadowElevation = if (isAnyRecording) 4.dp else 2.dp,
+                        modifier = Modifier
+                            .height(48.dp)
+                            .padding(vertical = 6.dp)
+                            .testTag("landscape_record_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isAnyRecording) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(if (isAnyRecording) 16.dp else 13.dp)
+                            )
+                            Text(
+                                text = recordLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
                     }
@@ -516,7 +614,11 @@ private fun StudioHeaderRow(
                     color = WarmInk
                 )
                 Text(
-                    text = if (isRecording) "Hvatam tvoje note..." else "Tvoja muzička sveska",
+                    text = if (isRecording) {
+                        stringResource(R.string.studio_subtitle_listening)
+                    } else {
+                        stringResource(R.string.studio_subtitle_default)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MutedInk
                 )
@@ -546,15 +648,15 @@ private fun StudioHeaderRow(
             ) {
                 Icon(
                     imageVector = if (settings.isCalibrated) Icons.Filled.CheckCircle else Icons.Filled.Tune,
-                    contentDescription = "Štimuj C",
+                    contentDescription = stringResource(R.string.action_tune_c),
                     tint = if (settings.isCalibrated) SageMintSecondary else WarmInk,
                     modifier = Modifier.size(18.dp)
                 )
                 Column {
                     Text(
                         text = when {
-                            settings.calibrationProfile.isScaleCalibrated -> "Profil klavira"
-                            settings.isCalibrated -> "Štim sačuvan"
+                            settings.calibrationProfile.isScaleCalibrated -> stringResource(R.string.studio_tune_profile_saved)
+                            settings.isCalibrated -> stringResource(R.string.studio_tune_saved)
                             else -> stringResource(R.string.action_tune_c)
                         },
                         style = MaterialTheme.typography.labelMedium,
@@ -566,7 +668,7 @@ private fun StudioHeaderRow(
                             val hzStr = String.format(java.util.Locale.US, "%.1f Hz", settings.calibratedC4Hz)
                             "$hzStr ($sign$centsInt ct)"
                         } else {
-                            "Standard 440 Hz"
+                            stringResource(R.string.studio_tune_standard)
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = if (settings.isCalibrated) OnSageMintContainer else MutedInk
@@ -649,7 +751,7 @@ private fun ShimmeringMascotIcon(
 
         Image(
             painter = painterResource(id = R.drawable.ic_notolovac_icon_cat),
-            contentDescription = "Notolovac maskota — zadrži za informacije o aplikaciji",
+            contentDescription = stringResource(R.string.studio_mascot_desc),
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(48.dp)
@@ -754,7 +856,11 @@ private fun MetronomeCompactCard(
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = if (isRunning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                            contentDescription = if (isRunning) "Zaustavi metronom" else "Pokreni metronom",
+                            contentDescription = if (isRunning) {
+                                stringResource(R.string.metronome_stop_desc)
+                            } else {
+                                stringResource(R.string.metronome_start_desc)
+                            },
                             tint = if (isRunning) Color.White else OnLavenderContainer,
                             modifier = Modifier.size(24.dp)
                         )
@@ -788,7 +894,7 @@ private fun MetronomeCompactCard(
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = "Metronom",
+                        text = stringResource(R.string.metronome_title),
                         style = MaterialTheme.typography.labelSmall,
                         color = MutedInk
                     )
@@ -808,7 +914,7 @@ private fun MetronomeCompactCard(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Remove,
-                            contentDescription = "Smanji tempo",
+                            contentDescription = stringResource(R.string.metronome_tempo_down_desc),
                             tint = if (bpm > MetronomeEngine.MIN_BPM) WarmInk else MutedInk.copy(alpha = 0.4f)
                         )
                     }
@@ -834,7 +940,7 @@ private fun MetronomeCompactCard(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Add,
-                            contentDescription = "Povećaj tempo",
+                            contentDescription = stringResource(R.string.metronome_tempo_up_desc),
                             tint = if (bpm < MetronomeEngine.MAX_BPM) WarmInk else MutedInk.copy(alpha = 0.4f)
                         )
                     }
@@ -908,8 +1014,10 @@ private fun MetronomeCompactCard(
 private fun LiveNoteBadge(
     liveMidiNote: Int?,
     isRecording: Boolean,
+    isKeyboardRecording: Boolean,
     capturedCount: Int
 ) {
+    val activeRec = isRecording || isKeyboardRecording
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -918,14 +1026,14 @@ private fun LiveNoteBadge(
             shape = RoundedCornerShape(12.dp),
             color = when {
                 liveMidiNote != null -> HoneyGoldContainer
-                isRecording -> CoralContainer
+                activeRec -> CoralContainer
                 else -> WarmSurface
             },
             border = BorderStroke(
                 1.dp,
                 when {
                     liveMidiNote != null -> HoneyGoldTertiary
-                    isRecording -> CoralPrimary
+                    activeRec -> CoralPrimary
                     else -> WarmCardBorder
                 }
             )
@@ -944,8 +1052,9 @@ private fun LiveNoteBadge(
                 Text(
                     text = when {
                         liveMidiNote != null -> MusicTheory.formatFullNoteDescription(liveMidiNote)
-                        isRecording -> "Slušam ($capturedCount)"
-                        else -> "Notni list"
+                        isKeyboardRecording -> stringResource(R.string.live_badge_recording_keys, capturedCount)
+                        isRecording -> stringResource(R.string.live_badge_listening, capturedCount)
+                        else -> stringResource(R.string.live_badge_sheet)
                     },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,

@@ -2,16 +2,21 @@ package com.example.viewmodel
 
 import android.app.Application
 import android.os.SystemClock
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.R
 import com.example.audio.AudioCaptureEngine
+import com.example.audio.KeyboardPerformanceRecorder
 import com.example.audio.MetronomeEngine
+import com.example.audio.MicrophoneUnavailableException
 import com.example.audio.PianoCalibrationProfile
 import com.example.audio.PianoNoteTracker
 import com.example.audio.PianoSynthesizer
 import com.example.audio.ScaleCalibrationEngine
 import com.example.audio.ScaleCalibrationPhase
 import com.example.audio.ScaleCalibrationSnapshot
+import com.example.audio.ScaleStatusCode
 import com.example.data.NotolovacDatabase
 import com.example.data.SavedSong
 import com.example.data.SongRepository
@@ -68,7 +73,7 @@ data class TuneDialogState(
     val liveRms: Float = 0f,
     val lockedSamples: Int = 0,
     val requiredSamples: Int = 7,
-    val statusMessage: String = "Pritisni „Slušaj moje C“ pa odsviraj srednje C (Do) na klaviru.",
+    val statusMessage: String = "",
     // Guided C4..C5 scale calibration state
     val scaleSnapshot: ScaleCalibrationSnapshot = ScaleCalibrationSnapshot(),
     // Persisted active calibration proof
@@ -86,7 +91,7 @@ data class TuneDialogState(
 
 data class ActiveSheetState(
     val songId: Long = 0L,
-    val title: String = "Moja nova melodija",
+    val title: String = "",
     val notes: List<DetectedNote> = emptyList(),
     val bpm: Int = 90,
     val beatsPerMeasure: Int = 4,
@@ -102,6 +107,9 @@ data class NotolovacUiState(
     val currentTab: AppTab = AppTab.STUDIO,
     val isRecording: Boolean = false,
     val recordingElapsedSeconds: Int = 0,
+    val isKeyboardRecording: Boolean = false,
+    val keyboardRecordingElapsedSeconds: Int = 0,
+    val keyboardRecordedNotes: List<DetectedNote> = emptyList(),
     val liveMidiNote: Int? = null,
     val liveCentsOff: Float = 0f,
     val liveFrequencyHz: Double = 0.0,
@@ -127,6 +135,10 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     private val audioEngine = AudioCaptureEngine()
     private val synthesizer = PianoSynthesizer()
     private val metronomeEngine = MetronomeEngine()
+    private val keyboardRecorder = KeyboardPerformanceRecorder()
+
+    private fun str(@StringRes resId: Int, vararg args: Any): String =
+        getApplication<Application>().getString(resId, *args)
 
     val settings: StateFlow<UserSettings> = preferencesRepository.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -145,6 +157,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var recordingJob: Job? = null
     private var recordingTimerJob: Job? = null
+    private var keyboardRecordingTimerJob: Job? = null
     private var calibrationJob: Job? = null
     private var playbackJob: Job? = null
     private var keyGlowJob: Job? = null
@@ -152,7 +165,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     private var recordingHadMetronome: Boolean = false
 
     fun selectTab(tab: AppTab) {
-        if (_uiState.value.isRecording) return
+        if (_uiState.value.isRecording || _uiState.value.isKeyboardRecording) return
         stopPlayback()
         _uiState.update { it.copy(currentTab = tab, activeSheet = null) }
     }
@@ -250,11 +263,16 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
             midiNote = midiNote,
             calibrationCents = settings.value.calibrationCents
         )
-        val nowMs = System.currentTimeMillis()
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val recordedSnapshot = if (keyboardRecorder.isRecording) {
+            keyboardRecorder.onKeyPressed(midiNote, nowElapsed)
+        } else {
+            null
+        }
         val entry = DetectedNote(
             id = keyboardHistoryIdCounter++,
             midiNote = midiNote,
-            startTimeMs = nowMs,
+            startTimeMs = nowElapsed,
             durationMs = 400L,
             beats = 1.0f,
             confidence = 1f,
@@ -263,15 +281,24 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { state ->
             state.copy(
                 keyboardActiveNotes = state.keyboardActiveNotes + midiNote,
-                keyboardPlayedHistory = (state.keyboardPlayedHistory + entry).takeLast(14)
+                keyboardPlayedHistory = (state.keyboardPlayedHistory + entry).takeLast(14),
+                keyboardRecordedNotes = recordedSnapshot ?: state.keyboardRecordedNotes
             )
         }
     }
 
     fun onPianoKeyReleased(midiNote: Int) {
         synthesizer.noteOff(midiNote)
+        val recordedSnapshot = if (keyboardRecorder.isRecording) {
+            keyboardRecorder.onKeyReleased(midiNote, SystemClock.elapsedRealtime())
+        } else {
+            null
+        }
         _uiState.update { state ->
-            state.copy(keyboardActiveNotes = state.keyboardActiveNotes - midiNote)
+            state.copy(
+                keyboardActiveNotes = state.keyboardActiveNotes - midiNote,
+                keyboardRecordedNotes = recordedSnapshot ?: state.keyboardRecordedNotes
+            )
         }
     }
 
@@ -279,10 +306,97 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(keyboardPlayedHistory = emptyList()) }
     }
 
+    // ---- KEYBOARD RECORDING ("SNIMI SVIRKU" IN LANDSCAPE STAGE) ----
+
+    fun toggleKeyboardRecording() {
+        if (_uiState.value.isKeyboardRecording) {
+            stopKeyboardRecording()
+        } else {
+            startKeyboardRecording()
+        }
+    }
+
+    fun startKeyboardRecording() {
+        if (_uiState.value.isKeyboardRecording) return
+        if (_uiState.value.isRecording) stopRecording()
+        stopPlayback()
+        stopCalibrationListening()
+
+        keyboardRecorder.start()
+        _uiState.update {
+            it.copy(
+                isKeyboardRecording = true,
+                keyboardRecordingElapsedSeconds = 0,
+                keyboardRecordedNotes = emptyList(),
+                activeSheet = null
+            )
+        }
+
+        keyboardRecordingTimerJob?.cancel()
+        keyboardRecordingTimerJob = viewModelScope.launch {
+            var sec = 0
+            while (isActive) {
+                delay(1000)
+                sec++
+                _uiState.update { it.copy(keyboardRecordingElapsedSeconds = sec) }
+            }
+        }
+    }
+
+    fun stopKeyboardRecording() {
+        if (!_uiState.value.isKeyboardRecording) return
+        keyboardRecordingTimerJob?.cancel()
+        keyboardRecordingTimerJob = null
+
+        val currentSettings = settings.value
+        val transcription = keyboardRecorder.finishAndQuantize(
+            endTimestampMs = SystemClock.elapsedRealtime(),
+            fallbackBpm = currentSettings.metronomeBpm,
+            lockToMetronomeBpm = _uiState.value.metronomeRunning
+        )
+        val quantizedNotes = transcription.notes
+        val playableCount = quantizedNotes.count { !it.isRest }
+
+        if (playableCount == 0) {
+            _uiState.update {
+                it.copy(
+                    isKeyboardRecording = false,
+                    keyboardRecordingElapsedSeconds = 0,
+                    keyboardRecordedNotes = emptyList(),
+                    snackbarMessage = str(R.string.msg_no_keyboard_notes_recorded)
+                )
+            }
+            return
+        }
+
+        val nextNumber = savedSongs.value.size + 1
+        _uiState.update {
+            it.copy(
+                isKeyboardRecording = false,
+                keyboardRecordingElapsedSeconds = 0,
+                keyboardRecordedNotes = emptyList(),
+                activeSheet = ActiveSheetState(
+                    songId = 0L,
+                    title = str(R.string.default_numbered_melody_title, nextNumber),
+                    notes = quantizedNotes,
+                    bpm = transcription.effectiveBpm,
+                    beatsPerMeasure = currentSettings.beatsPerMeasure,
+                    calibrationCentsUsed = currentSettings.calibrationCents,
+                    isSaved = false
+                )
+            )
+        }
+    }
+
     // ---- RECORDING ("SLUŠAJ SADA") ----
 
     fun startRecording() {
         if (_uiState.value.isRecording) return
+        if (_uiState.value.isKeyboardRecording) {
+            keyboardRecordingTimerJob?.cancel()
+            keyboardRecordingTimerJob = null
+            keyboardRecorder.cancel()
+        }
         stopPlayback()
         stopCalibrationListening()
 
@@ -297,6 +411,9 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update {
             it.copy(
                 isRecording = true,
+                isKeyboardRecording = false,
+                keyboardRecordingElapsedSeconds = 0,
+                keyboardRecordedNotes = emptyList(),
                 recordingElapsedSeconds = 0,
                 liveMidiNote = null,
                 liveCentsOff = 0f,
@@ -325,11 +442,16 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                 calibrationProfile = activeProfile
             )
                 .catch { err ->
+                    val msg = if (err is MicrophoneUnavailableException) {
+                        str(R.string.error_mic_unavailable)
+                    } else {
+                        str(R.string.error_mic_start_failed)
+                    }
                     _uiState.update {
                         it.copy(
                             isRecording = false,
                             isMicClipping = false,
-                            snackbarMessage = err.message ?: "Greška pri pokretanju mikrofona."
+                            snackbarMessage = msg
                         )
                     }
                     recordingTimerJob?.cancel()
@@ -376,7 +498,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     liveMidiNote = null,
                     rmsLevel = 0f,
                     isMicClipping = false,
-                    snackbarMessage = "Nisam uspeo da čujem note klavira. Pokušaj malo glasnije ili bliže klaviru!"
+                    snackbarMessage = str(R.string.msg_no_piano_notes_heard)
                 )
             }
             return
@@ -391,7 +513,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                 isMicClipping = false,
                 activeSheet = ActiveSheetState(
                     songId = 0L,
-                    title = "Moja melodija #$nextNumber",
+                    title = str(R.string.default_numbered_melody_title, nextNumber),
                     notes = quantizedNotes,
                     bpm = effectiveBpm,
                     beatsPerMeasure = currentSettings.beatsPerMeasure,
@@ -432,9 +554,9 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     liveRms = 0f,
                     lockedSamples = 0,
                     statusMessage = if (s.isCalibrated) {
-                        "Tvoj štim je već sačuvan i aktivan. Možeš ponovo da izmeriš C ako želiš."
+                        str(R.string.tune_status_idle_saved)
                     } else {
-                        "Pritisni „Slušaj moje C“, zatim pritisni i zadrži srednje C (Do) 1–2 sekunde."
+                        str(R.string.tune_status_idle_default)
                     },
                     scaleSnapshot = ScaleCalibrationSnapshot(),
                     savedIsCalibrated = s.isCalibrated,
@@ -495,9 +617,9 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                         savedCents = 0f,
                         savedA4Hz = MusicTheory.STANDARD_A4_HZ,
                         savedProfile = PianoCalibrationProfile.STANDARD,
-                        statusMessage = "Vraćeno na standardni štim (C4 = 261.6 Hz, A4 = 440.0 Hz)."
+                        statusMessage = str(R.string.tune_status_reset_done)
                     ),
-                    snackbarMessage = "Štimovanje vraćeno na standardnih 440 Hz."
+                    snackbarMessage = str(R.string.msg_tuning_reset_snackbar)
                 )
             }
         }
@@ -533,7 +655,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         calibrationJob?.cancel()
         calibrationJob = viewModelScope.launch {
             audioEngine.pitchFramesFlow(calibrationCents = 0f, widePitchTolerance = true)
-                .catch { err ->
+                .catch {
                     _uiState.update {
                         it.copy(
                             tuneDialog = it.tuneDialog.copy(
@@ -541,7 +663,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                 phase = TunePhase.IDLE,
                                 liveRms = 0f,
                                 scaleSnapshot = ScaleCalibrationSnapshot(
-                                    statusMessage = err.message ?: "Mikrofon nije dostupan."
+                                    statusCode = ScaleStatusCode.MIC_UNAVAILABLE
                                 )
                             )
                         )
@@ -568,7 +690,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                     savedA4Hz = profile.equivalentA4Hz,
                                     savedProfile = profile
                                 ),
-                                snackbarMessage = "Sačuvan profil klavira (Skala Do–Do): C4 = $c4Str ($sign$ct ct)"
+                                snackbarMessage = str(R.string.msg_scale_profile_saved_snackbar, c4Str, sign, ct)
                             )
                         }
                         calibrationJob?.cancel()
@@ -606,7 +728,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     liveRms = 0f,
                     lockedSamples = 0,
                     requiredSamples = targetSamples,
-                    statusMessage = "Slušam mikrofon... Pritisni i zadrži jednu dirku C (Do) 1–2 sekunde."
+                    statusMessage = str(R.string.tune_status_listening_prompt)
                 )
             )
         }
@@ -614,14 +736,14 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         calibrationJob?.cancel()
         calibrationJob = viewModelScope.launch {
             audioEngine.pitchFramesFlow(calibrationCents = 0f, widePitchTolerance = true)
-                .catch { err ->
+                .catch {
                     _uiState.update {
                         it.copy(
                             tuneDialog = it.tuneDialog.copy(
                                 phase = TunePhase.IDLE,
                                 isListening = false,
                                 liveRms = 0f,
-                                statusMessage = err.message ?: "Mikrofon nije dostupan."
+                                statusMessage = str(R.string.error_mic_unavailable)
                             )
                         )
                     }
@@ -668,7 +790,13 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                             liveHz = normalizedC4,
                                             liveCents = centsDiff,
                                             lockedSamples = 0,
-                                            statusMessage = "Čuo sam $cLabel ($c4Text, $sign$roundedCt ct), ali ton nije stabilan. Pritisni opet samo jednu dirku C!"
+                                            statusMessage = str(
+                                                R.string.tune_status_unstable,
+                                                cLabel,
+                                                c4Text,
+                                                sign,
+                                                roundedCt
+                                            )
                                         )
                                     )
                                 }
@@ -686,7 +814,15 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                             liveHz = normalizedC4,
                                             liveCents = centsDiff,
                                             lockedSamples = collectedCents.size,
-                                            statusMessage = "Čujem $cLabel ($c4Text, $sign$roundedCt ct) — zadrži dirku još trenutak (${collectedCents.size}/$targetSamples)..."
+                                            statusMessage = str(
+                                                R.string.tune_status_locking,
+                                                cLabel,
+                                                c4Text,
+                                                sign,
+                                                roundedCt,
+                                                collectedCents.size,
+                                                targetSamples
+                                            )
                                         )
                                     )
                                 }
@@ -725,9 +861,20 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                                 savedCents = medianCents,
                                                 savedA4Hz = equivalentA4,
                                                 savedProfile = quickProfile,
-                                                statusMessage = "Štim tvog klavira je sačuvan! C4 = $finalC4Text ($finalSign$finalCt ct • A4 ≈ $finalA4Text). Sve note se od sada prepoznaju po ovom štimu."
+                                                statusMessage = str(
+                                                    R.string.tune_status_saved,
+                                                    finalC4Text,
+                                                    finalSign,
+                                                    finalCt,
+                                                    finalA4Text
+                                                )
                                             ),
-                                            snackbarMessage = "Sačuvan štim klavira: C4 = $finalC4Text ($finalSign$finalCt ct)"
+                                            snackbarMessage = str(
+                                                R.string.msg_quick_c_saved_snackbar,
+                                                finalC4Text,
+                                                finalSign,
+                                                finalCt
+                                            )
                                         )
                                     }
                                     calibrationJob?.cancel()
@@ -755,7 +902,11 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                             heardNoteName = heardName,
                                             heardRawHz = est.frequencyHz,
                                             lockedSamples = 0,
-                                            statusMessage = "Čuo sam notu $heardName ($rawHzText) — to nije C. Pritisni dirku C (Do) opet!"
+                                            statusMessage = str(
+                                                R.string.tune_status_wrong_note,
+                                                heardName,
+                                                rawHzText
+                                            )
                                         )
                                     )
                                 }
@@ -777,7 +928,12 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                         tuneDialog = it.tuneDialog.copy(
                                             phase = TunePhase.RETRY_UNSTABLE,
                                             lockedSamples = 0,
-                                            statusMessage = "Čuo sam C ($partialHzText, $partialSign$partialCt ct), ali ton je bio prekratak. Pritisni C opet i zadrži dirku 1–2 sekunde!"
+                                            statusMessage = str(
+                                                R.string.tune_status_too_short,
+                                                partialHzText,
+                                                partialSign,
+                                                partialCt
+                                            )
                                         )
                                     )
                                 }
@@ -788,7 +944,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                                 _uiState.update {
                                     it.copy(
                                         tuneDialog = it.tuneDialog.copy(
-                                            statusMessage = "Još ne čujem jasan ton klavira. Približi telefon klaviru i pritisni C malo jače!"
+                                            statusMessage = str(R.string.tune_status_no_sound_yet)
                                         )
                                     )
                                 }
@@ -1127,11 +1283,11 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     fun saveActiveSheet() {
         val sheet = _uiState.value.activeSheet ?: return
         if (sheet.notes.none { !it.isRest }) {
-            showMessage("Dodaj bar jednu notu pre čuvanja.")
+            showMessage(str(R.string.msg_add_note_before_saving))
             return
         }
         viewModelScope.launch {
-            val cleanTitle = sheet.title.trim().ifEmpty { "Moja melodija" }
+            val cleanTitle = sheet.title.trim().ifEmpty { str(R.string.default_song_title_short) }
             val song = SavedSong(
                 id = sheet.songId,
                 title = cleanTitle,
@@ -1146,7 +1302,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                 state.activeSheet?.let { cur ->
                     state.copy(
                         activeSheet = cur.copy(songId = savedId, title = cleanTitle, isSaved = true),
-                        snackbarMessage = "Sačuvano u tvoju muzičku svesku!"
+                        snackbarMessage = str(R.string.msg_saved_to_notebook)
                     )
                 } ?: state
             }
@@ -1156,7 +1312,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     fun deleteSavedSong(song: SavedSong) {
         viewModelScope.launch {
             songRepository.deleteSong(song.id)
-            showMessage("Pesmica „${song.title}“ je obrisana.")
+            showMessage(str(R.string.msg_song_deleted, song.title))
         }
     }
 
@@ -1164,6 +1320,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         super.onCleared()
         recordingJob?.cancel()
         recordingTimerJob?.cancel()
+        keyboardRecordingTimerJob?.cancel()
         calibrationJob?.cancel()
         playbackJob?.cancel()
         metronomeEngine.stop()

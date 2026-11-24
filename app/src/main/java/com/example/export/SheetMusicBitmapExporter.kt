@@ -10,6 +10,7 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.example.R
 import com.example.model.DetectedNote
 import com.example.model.MusicTheory
 import com.example.model.NoteDuration
@@ -36,7 +37,9 @@ object SheetMusicBitmapExporter {
     ): Uri? {
         return runCatching {
             val bitmap = renderSheetBitmap(
-                title = title.ifBlank { "Moja melodija" },
+                title = title.ifBlank { context.getString(R.string.default_song_title_short) },
+                appName = context.getString(R.string.app_name),
+                footerWatermark = context.getString(R.string.export_footer_watermark),
                 notes = notes,
                 bpm = bpm,
                 beatsPerMeasure = beatsPerMeasure,
@@ -58,6 +61,8 @@ object SheetMusicBitmapExporter {
 
     private fun renderSheetBitmap(
         title: String,
+        appName: String,
+        footerWatermark: String,
         notes: List<DetectedNote>,
         bpm: Int,
         beatsPerMeasure: Int,
@@ -108,7 +113,7 @@ object SheetMusicBitmapExporter {
             textAlign = Paint.Align.CENTER
         }
         canvas.drawText(
-            "Notolovac  •  $bpm BPM  •  $beatsPerMeasure/4  •  $dateStr",
+            "$appName  •  $bpm BPM  •  $beatsPerMeasure/4  •  $dateStr",
             width / 2f,
             158f,
             subtitlePaint
@@ -331,7 +336,7 @@ object SheetMusicBitmapExporter {
             textAlign = Paint.Align.CENTER
         }
         canvas.drawText(
-            "Napravljeno u aplikaciji Notolovac",
+            footerWatermark,
             width / 2f,
             height - 46f,
             footerPaint

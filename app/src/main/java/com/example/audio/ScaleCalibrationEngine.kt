@@ -23,6 +23,22 @@ data class ScaleNoteMeasurement(
     val beatingSwellRatio: Float
 )
 
+enum class ScaleStatusCode {
+    IDLE,
+    SILENCE_START,
+    SILENCE_LOUD,
+    SILENCE_MEASURING,
+    SILENCE_DONE,
+    PRESS_KEY,
+    HOLD_KEY,
+    NOTE_DONE,
+    LOCKING_NOTE,
+    NEXT_KEY,
+    WRONG_NOTE,
+    COMPLETED,
+    MIC_UNAVAILABLE
+}
+
 data class ScaleCalibrationSnapshot(
     val phase: ScaleCalibrationPhase = ScaleCalibrationPhase.IDLE,
     val silenceProgress: Float = 0f,
@@ -34,7 +50,11 @@ data class ScaleCalibrationSnapshot(
     val heardRawHz: Double = 0.0,
     val isWrongNoteWarning: Boolean = false,
     val liveRms: Float = 0f,
-    val statusMessage: String = "Odsviraj polako skalu Do–Do (8 belih dirki) da Notolovac upozna tvoj klavir, sobu i mikrofon.",
+    val statusCode: ScaleStatusCode = ScaleStatusCode.IDLE,
+    val statusPrimaryNote: String? = null,
+    val statusSecondaryNote: String? = null,
+    val statusCents: Int = 0,
+    val statusMessage: String = "",
     val resultingProfile: PianoCalibrationProfile? = null
 ) {
     val currentTargetMidi: Int
@@ -102,7 +122,7 @@ class ScaleCalibrationEngine(
             phase = ScaleCalibrationPhase.SILENCE_CHECK,
             silenceProgress = 0f,
             requiredSamplesPerNote = requiredSamplesPerNote,
-            statusMessage = "Sekund tišine... Merim pozadinski šum sobe (ne pritiskaj dirke)."
+            statusCode = ScaleStatusCode.SILENCE_START
         )
     }
 
@@ -153,22 +173,23 @@ class ScaleCalibrationEngine(
                 requiredSamplesPerNote = requiredSamplesPerNote,
                 completedNotes = emptyList(),
                 liveRms = frame.rms,
-                statusMessage = "Tišina izmerena! Sada pritisni $firstLabel i zadrži kratko."
+                statusCode = ScaleStatusCode.SILENCE_DONE,
+                statusPrimaryNote = firstLabel
             )
         }
 
         val progress = (quietRmsSamples.size.toFloat() / silenceTargetFrames).coerceIn(0f, 1f)
-        val msg = if (frame.rms >= 0.045f) {
-            "Čujem zvuk — sačekaj sekund tišine da izmerim šum sobe..."
+        val code = if (frame.rms >= 0.045f) {
+            ScaleStatusCode.SILENCE_LOUD
         } else {
-            "Sekund tišine... Merim pozadinski šum sobe."
+            ScaleStatusCode.SILENCE_MEASURING
         }
         return ScaleCalibrationSnapshot(
             phase = ScaleCalibrationPhase.SILENCE_CHECK,
             silenceProgress = progress,
             requiredSamplesPerNote = requiredSamplesPerNote,
             liveRms = frame.rms,
-            statusMessage = msg
+            statusCode = code
         )
     }
 
@@ -193,11 +214,8 @@ class ScaleCalibrationEngine(
                 requiredSamplesPerNote = requiredSamplesPerNote,
                 completedNotes = completedMeasurements.toList(),
                 liveRms = frame.rms,
-                statusMessage = if (currentCentsSamples.isEmpty()) {
-                    "Pritisni dirku $targetLabel i zadrži kratko."
-                } else {
-                    "Zadrži $targetLabel još trenutak (${currentCentsSamples.size}/$requiredSamplesPerNote)..."
-                }
+                statusCode = if (currentCentsSamples.isEmpty()) ScaleStatusCode.PRESS_KEY else ScaleStatusCode.HOLD_KEY,
+                statusPrimaryNote = targetLabel
             )
         }
 
@@ -279,7 +297,9 @@ class ScaleCalibrationEngine(
                     heardNoteName = targetLabel,
                     heardRawHz = medianHz,
                     liveRms = frame.rms,
-                    statusMessage = "Odlično! $targetLabel zabeležen — sada pritisni $nextLabel."
+                    statusCode = ScaleStatusCode.NOTE_DONE,
+                    statusPrimaryNote = targetLabel,
+                    statusSecondaryNote = nextLabel
                 )
             }
 
@@ -293,7 +313,9 @@ class ScaleCalibrationEngine(
                 heardNoteName = targetLabel,
                 heardRawHz = frame.frequencyHz,
                 liveRms = frame.rms,
-                statusMessage = "Čujem $targetLabel ($hzStr, $sign$roundedCt ct) — zadrži kratko (${currentCentsSamples.size}/$requiredSamplesPerNote)..."
+                statusCode = ScaleStatusCode.LOCKING_NOTE,
+                statusPrimaryNote = targetLabel,
+                statusCents = roundedCt
             )
         }
 
@@ -308,7 +330,8 @@ class ScaleCalibrationEngine(
                 requiredSamplesPerNote = requiredSamplesPerNote,
                 completedNotes = completedMeasurements.toList(),
                 liveRms = frame.rms,
-                statusMessage = "Sada pritisni sledeću dirku: $targetLabel."
+                statusCode = ScaleStatusCode.NEXT_KEY,
+                statusPrimaryNote = targetLabel
             )
         }
 
@@ -323,7 +346,6 @@ class ScaleCalibrationEngine(
 
         val showWarning = wrongNoteFrames >= 3
         val heardLabel = MusicTheory.formatFullNoteDescription(heardMidi)
-        val hzStr = String.format(Locale.US, "%.1f Hz", frame.frequencyHz)
 
         return ScaleCalibrationSnapshot(
             phase = ScaleCalibrationPhase.MEASURING_NOTE,
@@ -336,11 +358,10 @@ class ScaleCalibrationEngine(
             heardRawHz = if (showWarning) frame.frequencyHz else 0.0,
             isWrongNoteWarning = showWarning,
             liveRms = frame.rms,
-            statusMessage = if (showWarning) {
-                "Čuo sam $heardLabel ($hzStr) — za ovaj korak pritisni $targetLabel!"
-            } else {
-                "Pritisni dirku $targetLabel i zadrži kratko."
-            }
+            statusCode = if (showWarning) ScaleStatusCode.WRONG_NOTE else ScaleStatusCode.PRESS_KEY,
+            statusPrimaryNote = if (showWarning) heardLabel else targetLabel,
+            statusSecondaryNote = if (showWarning) targetLabel else null,
+            statusMessage = if (showWarning) "Heard $heardLabel — press $targetLabel" else "Press $targetLabel"
         )
     }
 
@@ -400,15 +421,6 @@ class ScaleCalibrationEngine(
 
     private fun buildCompletedSnapshot(liveRms: Float): ScaleCalibrationSnapshot {
         val profile = lastProfile ?: PianoCalibrationProfile.STANDARD
-        val ct = profile.globalCents.roundToInt()
-        val sign = if (ct > 0) "+" else ""
-        val c4Str = String.format(Locale.US, "%.1f Hz", profile.calibratedC4Hz)
-        val a4Str = String.format(Locale.US, "%.1f Hz", profile.equivalentA4Hz)
-        val clipNote = if (profile.clippingWarning) {
-            " Savet: mikrofon je malo preblizu klaviru — odmakni telefon 15–20 cm."
-        } else {
-            ""
-        }
         return ScaleCalibrationSnapshot(
             phase = ScaleCalibrationPhase.COMPLETED,
             silenceProgress = 1f,
@@ -417,7 +429,7 @@ class ScaleCalibrationEngine(
             requiredSamplesPerNote = requiredSamplesPerNote,
             completedNotes = completedMeasurements.toList(),
             liveRms = liveRms,
-            statusMessage = "Profil tvog klavira je sačuvan! C4 = $c4Str ($sign$ct ct • A4 ≈ $a4Str).$clipNote",
+            statusCode = ScaleStatusCode.COMPLETED,
             resultingProfile = profile
         )
     }

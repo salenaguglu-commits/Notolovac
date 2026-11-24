@@ -45,6 +45,7 @@ import com.example.audio.ScaleCalibrationEngine
 import com.example.audio.ScaleCalibrationPhase
 import com.example.audio.ScaleCalibrationSnapshot
 import com.example.audio.ScaleNoteMeasurement
+import com.example.audio.ScaleStatusCode
 import com.example.model.MusicTheory
 import com.example.ui.theme.CoralContainer
 import com.example.ui.theme.CoralPrimary
@@ -146,7 +147,7 @@ fun ScaleCalibrationContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Tišina",
+                        text = stringResource(R.string.scale_silence_label),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = WarmInk
@@ -173,7 +174,7 @@ fun ScaleCalibrationContent(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Mikrofon",
+                        text = stringResource(R.string.tune_mic_label),
                         style = MaterialTheme.typography.labelSmall,
                         color = MutedInk
                     )
@@ -204,7 +205,7 @@ fun ScaleCalibrationContent(
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = snapshot.statusMessage,
+                text = localizedScaleStatusMessage(snapshot),
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = if (isCompleted || snapshot.isWrongNoteWarning) FontWeight.SemiBold else FontWeight.Normal,
                 color = when {
@@ -298,37 +299,37 @@ private fun ScaleLiveStatusPill(
             SageMintSecondary,
             Color.White,
             Icons.Filled.CheckCircle,
-            "Profil klavira sačuvan (8/8)"
+            stringResource(R.string.scale_pill_saved)
         )
         snapshot.isWrongNoteWarning -> ScalePillVisual(
             CoralPrimary,
             Color.White,
             Icons.Filled.ErrorOutline,
-            "Čuo sam ${snapshot.heardNoteName ?: "?"} — pritisni $targetDesc"
+            stringResource(R.string.scale_pill_wrong_note, snapshot.heardNoteName ?: "?", targetDesc)
         )
         snapshot.phase == ScaleCalibrationPhase.SILENCE_CHECK -> ScalePillVisual(
             HoneyGoldTertiary,
             WarmInk,
             Icons.Filled.Mic,
-            "Korak 1: Tišina sobe"
+            stringResource(R.string.scale_pill_silence)
         )
         snapshot.phase == ScaleCalibrationPhase.MEASURING_NOTE -> ScalePillVisual(
             HoneyGoldTertiary,
             WarmInk,
             Icons.Filled.MusicNote,
-            "Sada sviraj: $targetDesc"
+            stringResource(R.string.scale_pill_play_note, targetDesc)
         )
         isListening -> ScalePillVisual(
             WarmCard,
             WarmInk,
             Icons.Filled.Mic,
-            "Slušam..."
+            stringResource(R.string.scale_pill_listening)
         )
         else -> ScalePillVisual(
             WarmCard,
             MutedInk,
             Icons.Filled.Piano,
-            "Skala Do4 – Do5 (~15 sek)"
+            stringResource(R.string.scale_pill_ready)
         )
     }
 
@@ -452,9 +453,9 @@ private fun ScaleKeyTile(
 @Composable
 private fun AcousticProfileSummaryBadges(profile: PianoCalibrationProfile) {
     val noiseLabel = when {
-        profile.ambientNoiseRms < 0.004f -> "Tiha soba"
-        profile.ambientNoiseRms < 0.009f -> "Umeren šum"
-        else -> "Bučnija soba"
+        profile.ambientNoiseRms < 0.004f -> stringResource(R.string.scale_room_quiet)
+        profile.ambientNoiseRms < 0.009f -> stringResource(R.string.scale_room_moderate)
+        else -> stringResource(R.string.scale_room_noisy)
     }
     val stretchInt = profile.octaveStretchCentsPerOctave.roundToInt()
     val stretchSign = if (stretchInt > 0) "+" else ""
@@ -468,11 +469,11 @@ private fun AcousticProfileSummaryBadges(profile: PianoCalibrationProfile) {
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ProfileChip(
-                label = "Soba: $noiseLabel",
+                label = stringResource(R.string.scale_chip_room, noiseLabel),
                 modifier = Modifier.weight(1f)
             )
             ProfileChip(
-                label = "Oktava: $stretchSign${stretchInt} ct",
+                label = stringResource(R.string.scale_chip_octave, stretchSign, stretchInt),
                 modifier = Modifier.weight(1f)
             )
         }
@@ -495,7 +496,7 @@ private fun AcousticProfileSummaryBadges(profile: PianoCalibrationProfile) {
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "Telefon je vrlo blizu klavira — odmakni ga 15–20 cm za najčistije note.",
+                        text = stringResource(R.string.scale_clipping_warning),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = WarmInk
@@ -503,6 +504,54 @@ private fun AcousticProfileSummaryBadges(profile: PianoCalibrationProfile) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun localizedScaleStatusMessage(snapshot: ScaleCalibrationSnapshot): String {
+    val primary = snapshot.statusPrimaryNote ?: MusicTheory.formatFullNoteDescription(snapshot.currentTargetMidi)
+    val secondary = snapshot.statusSecondaryNote ?: ""
+    val hzStr = String.format(Locale.US, "%.1f Hz", snapshot.heardRawHz)
+    val sign = if (snapshot.statusCents > 0) "+" else ""
+    return when (snapshot.statusCode) {
+        ScaleStatusCode.IDLE -> stringResource(R.string.scale_status_idle)
+        ScaleStatusCode.SILENCE_START -> stringResource(R.string.scale_status_silence_start)
+        ScaleStatusCode.SILENCE_LOUD -> stringResource(R.string.scale_status_silence_loud)
+        ScaleStatusCode.SILENCE_MEASURING -> stringResource(R.string.scale_status_silence_measuring)
+        ScaleStatusCode.SILENCE_DONE -> stringResource(R.string.scale_status_silence_done, primary)
+        ScaleStatusCode.PRESS_KEY -> stringResource(R.string.scale_status_press_key, primary)
+        ScaleStatusCode.HOLD_KEY -> stringResource(
+            R.string.scale_status_hold_key,
+            primary,
+            snapshot.currentNoteLockedSamples,
+            snapshot.requiredSamplesPerNote
+        )
+        ScaleStatusCode.NOTE_DONE -> stringResource(R.string.scale_status_note_done, primary, secondary)
+        ScaleStatusCode.LOCKING_NOTE -> stringResource(
+            R.string.scale_status_locking_note,
+            primary,
+            hzStr,
+            sign,
+            snapshot.statusCents,
+            snapshot.currentNoteLockedSamples,
+            snapshot.requiredSamplesPerNote
+        )
+        ScaleStatusCode.NEXT_KEY -> stringResource(R.string.scale_status_next_key, primary)
+        ScaleStatusCode.WRONG_NOTE -> stringResource(R.string.scale_status_wrong_note, primary, hzStr, secondary)
+        ScaleStatusCode.COMPLETED -> {
+            val profile = snapshot.resultingProfile ?: PianoCalibrationProfile.STANDARD
+            val ct = profile.globalCents.roundToInt()
+            val cSign = if (ct > 0) "+" else ""
+            val c4Str = String.format(Locale.US, "%.1f Hz", profile.calibratedC4Hz)
+            val a4Str = String.format(Locale.US, "%.1f Hz", profile.equivalentA4Hz)
+            val base = stringResource(R.string.scale_status_completed, c4Str, cSign, ct, a4Str)
+            if (profile.clippingWarning) {
+                base + stringResource(R.string.scale_status_completed_clip_tip)
+            } else {
+                base
+            }
+        }
+        ScaleStatusCode.MIC_UNAVAILABLE -> stringResource(R.string.error_mic_unavailable)
     }
 }
 
