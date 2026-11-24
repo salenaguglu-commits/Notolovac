@@ -2,10 +2,15 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,6 +38,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,12 +48,23 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.model.MusicTheory
@@ -57,7 +74,6 @@ import com.example.ui.components.FullSheetMusicCanvas
 import com.example.ui.components.GlowingPianoKeyboard
 import com.example.ui.components.NoteEditorCard
 import com.example.ui.components.OctaveSelectorRow
-import com.example.ui.theme.CoralContainer
 import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.CreamPaper
 import com.example.ui.theme.HoneyGoldContainer
@@ -114,232 +130,466 @@ fun SheetResultScreen(
     val editSelectedMidi = if (sheet.isEditMode) selectedNote?.takeIf { !it.isRest }?.midiNote else null
     val activeKeyMidi = playingMidi ?: keyboardPressedMidi ?: editSelectedMidi
     val scrollState = rememberScrollState()
+    val density = LocalDensity.current
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(CreamPaper),
         contentAlignment = Alignment.TopCenter
     ) {
+        // Show compact piano keyboard inside the sticky edit dock by default on standard screens,
+        // and collapse by default on short/landscape viewports (always 1-tap toggleable).
+        val defaultShowKeyboard = maxHeight >= 640.dp
+        var showEditKeyboard by rememberSaveable { mutableStateOf(defaultShowKeyboard) }
+        var scrollViewportHeightPx by remember { mutableIntStateOf(0) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .widthIn(max = 680.dp)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 1. Top Bar: Back + Editable Title + Quick Share Icon
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.testTag("sheet_back_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.action_back),
-                        tint = WarmInk
-                    )
-                }
-
-                OutlinedTextField(
-                    value = sheet.title,
-                    onValueChange = onTitleChange,
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.default_song_title)) },
-                    textStyle = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = WarmInk
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CoralPrimary,
-                        unfocusedBorderColor = WarmCardBorder,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = WarmSurface
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("song_title_input")
-                )
-
+            // =========================================================================
+            // 1. FIXED TOP HEADER (Ultra-compact in Edit Mode so sheet gets max height)
+            // =========================================================================
+            if (sheet.isEditMode) {
                 Surface(
-                    onClick = onSharePng,
-                    shape = RoundedCornerShape(14.dp),
-                    color = LavenderContainer,
-                    border = BorderStroke(1.dp, LavenderMusic),
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("share_png_icon_button")
+                    color = CreamPaper,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.Share,
-                            contentDescription = stringResource(R.string.action_share_image),
-                            tint = OnLavenderContainer
-                        )
+                    Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            IconButton(
+                                onClick = onToggleEditMode,
+                                modifier = Modifier.testTag("sheet_back_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.action_done_editing),
+                                    tint = WarmInk
+                                )
+                            }
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = SageMintContainer,
+                                    border = BorderStroke(1.dp, SageMintSecondary)
+                                ) {
+                                    Text(
+                                        text = "Režim izmene",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = OnSageMintContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    text = sheet.title.ifBlank { stringResource(R.string.default_song_title) },
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = WarmInk,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            EditModeToggleButton(
+                                isEditMode = true,
+                                enabled = sheet.notes.isNotEmpty(),
+                                onClick = onToggleEditMode
+                            )
+                        }
+                        HorizontalDivider(color = WarmCardBorder.copy(alpha = 0.6f))
                     }
                 }
-            }
-
-            // 2. Metadata, Edit Mode Toggle & Label Switcher
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                val noteCount = sheet.notes.count { !it.isRest }
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = WarmSurface,
-                    border = BorderStroke(1.dp, WarmCardBorder)
-                ) {
-                    Text(
-                        text = "$noteCount nota • ${sheet.bpm} BPM • ${sheet.beatsPerMeasure}/4",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MutedInk,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-
-                // Prominent "Izmeni" / "Gotovo" Edit Mode Button
-                Surface(
-                    onClick = onToggleEditMode,
-                    enabled = sheet.notes.isNotEmpty(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (sheet.isEditMode) SageMintSecondary else HoneyGoldContainer,
-                    border = BorderStroke(
-                        width = 1.5.dp,
-                        color = if (sheet.isEditMode) SageMintSecondary else CoralPrimary
-                    ),
+            } else {
+                Column(
                     modifier = Modifier
-                        .height(48.dp)
-                        .testTag("toggle_edit_mode_button")
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = if (sheet.isEditMode) Icons.Filled.Check else Icons.Filled.Edit,
-                            contentDescription = if (sheet.isEditMode) {
-                                stringResource(R.string.action_done_editing)
-                            } else {
-                                stringResource(R.string.action_edit_notes)
-                            },
-                            tint = if (sheet.isEditMode) Color.White else CoralPrimary,
-                            modifier = Modifier.size(18.dp)
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier.testTag("sheet_back_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back),
+                                tint = WarmInk
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = sheet.title,
+                            onValueChange = onTitleChange,
+                            singleLine = true,
+                            placeholder = { Text(stringResource(R.string.default_song_title)) },
+                            textStyle = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = WarmInk
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = CoralPrimary,
+                                unfocusedBorderColor = WarmCardBorder,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = WarmSurface
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("song_title_input")
                         )
-                        Text(
-                            text = if (sheet.isEditMode) {
-                                stringResource(R.string.action_done_editing)
-                            } else {
-                                stringResource(R.string.action_edit_notes)
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = if (sheet.isEditMode) Color.White else WarmInk
+
+                        Surface(
+                            onClick = onSharePng,
+                            shape = RoundedCornerShape(14.dp),
+                            color = LavenderContainer,
+                            border = BorderStroke(1.dp, LavenderMusic),
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("share_png_icon_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Share,
+                                    contentDescription = stringResource(R.string.action_share_image),
+                                    tint = OnLavenderContainer
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val noteCount = sheet.notes.count { !it.isRest }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = WarmSurface,
+                            border = BorderStroke(1.dp, WarmCardBorder)
+                        ) {
+                            Text(
+                                text = "$noteCount nota • ${sheet.bpm} BPM • ${sheet.beatsPerMeasure}/4",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MutedInk,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+
+                        EditModeToggleButton(
+                            isEditMode = false,
+                            enabled = sheet.notes.isNotEmpty(),
+                            onClick = onToggleEditMode
                         )
                     }
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            // =========================================================================
+            // 2. INDEPENDENTLY SCROLLABLE SHEET MUSIC REGION
+            // =========================================================================
+            BoxWithConstraints(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onSizeChanged { scrollViewportHeightPx = it.height }
             ) {
-                if (sheet.isEditMode) {
+                val canvasMaxWidth = (maxWidth - 32.dp).coerceAtLeast(100.dp)
+                val notesPerRow = if (canvasMaxWidth >= 520.dp) 8 else 6
+
+                // Automatically keep the edited (or currently playing) note's staff row in view
+                val focusNoteIndex = sheet.playingNoteIndex ?: if (sheet.isEditMode) sheet.selectedNoteIndex else null
+                LaunchedEffect(focusNoteIndex, sheet.isEditMode, notesPerRow, scrollViewportHeightPx) {
+                    val idx = focusNoteIndex ?: return@LaunchedEffect
+                    if (scrollViewportHeightPx <= 0 || idx !in sheet.notes.indices) return@LaunchedEffect
+                    val row = idx / notesPerRow
+                    val rowHeightPx = with(density) { 158.dp.toPx() }
+                    val topOffsetPx = with(density) { 54.dp.toPx() }
+                    val rowTop = (topOffsetPx + row * rowHeightPx).toInt()
+                    val rowBottom = (rowTop + rowHeightPx).toInt()
+                    val visibleTop = scrollState.value
+                    val visibleBottom = scrollState.value + scrollViewportHeightPx
+
+                    when {
+                        rowTop < visibleTop -> {
+                            scrollState.animateScrollTo((rowTop - 16).coerceAtLeast(0))
+                        }
+                        rowBottom > visibleBottom -> {
+                            val target = (rowBottom - scrollViewportHeightPx + 24).coerceAtLeast(0)
+                            scrollState.animateScrollTo(target)
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        NoteLabelModeRow(
+                            selectedMode = labelMode,
+                            onSelect = onLabelModeSelected
+                        )
+                    }
+
+                    // Interactive Multi-line Sheet Music Notebook Page
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = SageMintContainer,
-                        border = BorderStroke(1.dp, SageMintSecondary)
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color(0xFFFFFDF8),
+                        border = BorderStroke(
+                            width = if (sheet.isEditMode) 2.5.dp else 1.5.dp,
+                            color = if (sheet.isEditMode) CoralPrimary else WarmCardBorder
+                        ),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(
-                            text = "Režim izmene",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = OnSageMintContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                        )
+                        Column(modifier = Modifier.padding(vertical = 10.dp)) {
+                            FullSheetMusicCanvas(
+                                notes = sheet.notes,
+                                beatsPerMeasure = sheet.beatsPerMeasure,
+                                labelMode = labelMode,
+                                playingNoteIndex = sheet.playingNoteIndex,
+                                selectedNoteIndex = sheet.selectedNoteIndex,
+                                onNoteTapped = onNoteTapped
+                            )
+                            Text(
+                                text = if (sheet.isEditMode) {
+                                    "Skroluj note gore-dole i dodirni bilo koju notu, a menjaj je u panelu ispod."
+                                } else {
+                                    "Savet: Pritisni „Izmeni“ ili dodirni bilo koju notu da je čuješ, pomeriš ili promeniš trajanje."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (sheet.isEditMode) CoralPrimary else MutedInk,
+                                fontWeight = if (sheet.isEditMode) FontWeight.SemiBold else FontWeight.Normal,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
+                        }
                     }
-                } else {
-                    Spacer(Modifier.width(1.dp))
+
+                    // View Mode footer controls scroll naturally below the sheet
+                    if (!sheet.isEditMode) {
+                        GlowingPianoKeyboard(
+                            activeMidiNote = activeKeyMidi,
+                            startOctave = keyboardStartOctave,
+                            labelMode = labelMode,
+                            onKeyClick = onPianoKeyClick,
+                            keyboardHeight = 92.dp
+                        )
+
+                        Button(
+                            onClick = onTogglePlayback,
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (sheet.isPlaying) CoralPrimary else SageMintSecondary,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .testTag("play_melody_button")
+                        ) {
+                            Icon(
+                                imageVector = if (sheet.isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(26.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (sheet.isPlaying) {
+                                    stringResource(R.string.action_stop_playback)
+                                } else {
+                                    stringResource(R.string.action_play_melody)
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Button(
+                                onClick = onSaveSong,
+                                shape = RoundedCornerShape(18.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (sheet.isSaved) SageMintContainer else CoralPrimary,
+                                    contentColor = if (sheet.isSaved) WarmInk else Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .testTag("save_song_button")
+                            ) {
+                                Icon(
+                                    imageVector = if (sheet.isSaved) Icons.Filled.BookmarkAdded else Icons.Filled.BookmarkBorder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = if (sheet.isSaved) "Sačuvano ✓" else stringResource(R.string.action_save_song),
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = onSharePng,
+                                shape = RoundedCornerShape(18.dp),
+                                border = BorderStroke(1.5.dp, LavenderMusic),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(52.dp)
+                                    .testTag("share_song_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Share,
+                                    contentDescription = null,
+                                    tint = LavenderMusic,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.action_share_image),
+                                    color = WarmInk,
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                    } else {
+                        // Small breathing room at bottom of scrollable sheet above the pinned editor dock
+                        Spacer(Modifier.height(12.dp))
+                    }
                 }
-                NoteLabelModeRow(
-                    selectedMode = labelMode,
-                    onSelect = onLabelModeSelected
-                )
             }
 
-            // 3. Full Interactive Multi-line Sheet Music Notebook Page
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Color(0xFFFFFDF8),
-                border = BorderStroke(
-                    width = if (sheet.isEditMode) 2.5.dp else 1.5.dp,
-                    color = if (sheet.isEditMode) CoralPrimary else WarmCardBorder
-                ),
-                shadowElevation = 3.dp,
-                modifier = Modifier.fillMaxWidth()
+            // =========================================================================
+            // 3. STICKY BOTTOM DOCK (Pinned at screen bottom, never scrolls away!)
+            // =========================================================================
+            AnimatedVisibility(
+                visible = sheet.isEditMode && selectedNote != null,
+                enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
             ) {
-                Column(modifier = Modifier.padding(vertical = 10.dp)) {
-                    FullSheetMusicCanvas(
-                        notes = sheet.notes,
-                        beatsPerMeasure = sheet.beatsPerMeasure,
-                        labelMode = labelMode,
-                        playingNoteIndex = sheet.playingNoteIndex,
-                        selectedNoteIndex = sheet.selectedNoteIndex,
-                        onNoteTapped = onNoteTapped
-                    )
-                    Text(
-                        text = if (sheet.isEditMode) {
-                            "Dodirni notu na linijama, pa joj promeni visinu (strelicama ili dirkom na klavijaturi) i dužinu trajanja."
-                        } else {
-                            "Savet: Pritisni „Izmeni“ ili dodirni bilo koju notu da je čuješ, pomeriš na pravo mesto ili promeniš trajanje."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (sheet.isEditMode) CoralPrimary else MutedInk,
-                        fontWeight = if (sheet.isEditMode) FontWeight.SemiBold else FontWeight.Normal,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            // 4. Full Note Editor Card (in Edit Mode) OR Compact Inspector Bar (in View Mode)
-            AnimatedVisibility(visible = sheet.isEditMode && selectedNote != null) {
                 val selIdx = sheet.selectedNoteIndex ?: return@AnimatedVisibility
                 val sel = selectedNote ?: return@AnimatedVisibility
-                NoteEditorCard(
-                    selectedNote = sel,
-                    selectedIndex = selIdx,
-                    totalCount = sheet.notes.size,
-                    onSelectPrevious = { onSelectAdjacentNote(-1) },
-                    onSelectNext = { onSelectAdjacentNote(1) },
-                    onPitchStepDown = onPitchStepDown,
-                    onPitchStepUp = onPitchStepUp,
-                    onToggleSharp = onToggleSharp,
-                    onConvertRestToNote = onConvertRestToNote,
-                    onSelectDuration = onSelectDuration,
-                    onAuditionNote = { if (!sel.isRest) onAuditionNote(sel.midiNote) },
-                    onInsertNoteAfter = onInsertNoteAfter,
-                    onDeleteNote = { onRemoveNote(selIdx) }
-                )
+
+                Surface(
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    color = Color(0xFFFFF6E4),
+                    border = BorderStroke(1.5.dp, CoralPrimary.copy(alpha = 0.55f)),
+                    shadowElevation = 10.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("sticky_edit_dock")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Subtle visual handle pill indicating pinned bottom sheet dock
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(CoralPrimary.copy(alpha = 0.35f))
+                        )
+
+                        NoteEditorCard(
+                            selectedNote = sel,
+                            selectedIndex = selIdx,
+                            totalCount = sheet.notes.size,
+                            onSelectPrevious = { onSelectAdjacentNote(-1) },
+                            onSelectNext = { onSelectAdjacentNote(1) },
+                            onPitchStepDown = onPitchStepDown,
+                            onPitchStepUp = onPitchStepUp,
+                            onToggleSharp = onToggleSharp,
+                            onConvertRestToNote = onConvertRestToNote,
+                            onSelectDuration = onSelectDuration,
+                            onAuditionNote = { if (!sel.isRest) onAuditionNote(sel.midiNote) },
+                            onInsertNoteAfter = onInsertNoteAfter,
+                            onDeleteNote = { onRemoveNote(selIdx) },
+                            showKeyboard = showEditKeyboard,
+                            onToggleKeyboard = { showEditKeyboard = !showEditKeyboard }
+                        )
+
+                        AnimatedVisibility(visible = showEditKeyboard) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Dodirni dirku:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CoralPrimary
+                                    )
+                                    OctaveSelectorRow(
+                                        startOctave = keyboardStartOctave,
+                                        onSelectOctave = onOctaveChange
+                                    )
+                                }
+                                GlowingPianoKeyboard(
+                                    activeMidiNote = activeKeyMidi,
+                                    startOctave = keyboardStartOctave,
+                                    labelMode = labelMode,
+                                    onKeyClick = onPianoKeyClick,
+                                    keyboardHeight = 76.dp
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            AnimatedVisibility(visible = !sheet.isEditMode && selectedNote != null) {
+            // Pinned Compact Inspector Bar in View Mode when any note on a long sheet is tapped
+            AnimatedVisibility(
+                visible = !sheet.isEditMode && selectedNote != null,
+                enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
+            ) {
                 val selIdx = sheet.selectedNoteIndex ?: return@AnimatedVisibility
                 val sel = selectedNote ?: return@AnimatedVisibility
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                     color = HoneyGoldContainer,
                     border = BorderStroke(1.5.dp, HoneyGoldTertiary),
-                    modifier = Modifier.fillMaxWidth()
+                    shadowElevation = 8.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("sticky_inspector_dock")
                 ) {
                     Row(
                         modifier = Modifier
@@ -357,7 +607,9 @@ fun SheetResultScreen(
                                 },
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = WarmInk
+                                color = WarmInk,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = sel.duration.serbianName,
@@ -422,121 +674,54 @@ fun SheetResultScreen(
                     }
                 }
             }
+        }
+    }
+}
 
-            // 5. Synchronized Glowing Keyboard (+ Octave Switcher when editing)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (sheet.isEditMode) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Dodirni dirku za novu visinu",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = CoralPrimary
-                        )
-                        OctaveSelectorRow(
-                            startOctave = keyboardStartOctave,
-                            onSelectOctave = onOctaveChange
-                        )
-                    }
-                }
-                GlowingPianoKeyboard(
-                    activeMidiNote = activeKeyMidi,
-                    startOctave = keyboardStartOctave,
-                    labelMode = labelMode,
-                    onKeyClick = onPianoKeyClick,
-                    keyboardHeight = if (sheet.isEditMode) 108.dp else 92.dp
-                )
-            }
-
-            // 6. Primary Playback & Save/Share Actions
-            Button(
-                onClick = onTogglePlayback,
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (sheet.isPlaying) CoralPrimary else SageMintSecondary,
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .testTag("play_melody_button")
-            ) {
-                Icon(
-                    imageVector = if (sheet.isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(26.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = if (sheet.isPlaying) {
-                        stringResource(R.string.action_stop_playback)
-                    } else {
-                        stringResource(R.string.action_play_melody)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onSaveSong,
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (sheet.isSaved) SageMintContainer else CoralPrimary,
-                        contentColor = if (sheet.isSaved) WarmInk else Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .testTag("save_song_button")
-                ) {
-                    Icon(
-                        imageVector = if (sheet.isSaved) Icons.Filled.BookmarkAdded else Icons.Filled.BookmarkBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = if (sheet.isSaved) "Sačuvano ✓" else stringResource(R.string.action_save_song),
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onSharePng,
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.5.dp, LavenderMusic),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .testTag("share_song_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Share,
-                        contentDescription = null,
-                        tint = LavenderMusic,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.action_share_image),
-                        color = WarmInk,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
+@Composable
+private fun EditModeToggleButton(
+    isEditMode: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        color = if (isEditMode) SageMintSecondary else HoneyGoldContainer,
+        border = BorderStroke(
+            width = 1.5.dp,
+            color = if (isEditMode) SageMintSecondary else CoralPrimary
+        ),
+        modifier = Modifier
+            .height(48.dp)
+            .testTag("toggle_edit_mode_button")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = if (isEditMode) Icons.Filled.Check else Icons.Filled.Edit,
+                contentDescription = if (isEditMode) {
+                    stringResource(R.string.action_done_editing)
+                } else {
+                    stringResource(R.string.action_edit_notes)
+                },
+                tint = if (isEditMode) Color.White else CoralPrimary,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = if (isEditMode) {
+                    stringResource(R.string.action_done_editing)
+                } else {
+                    stringResource(R.string.action_edit_notes)
+                },
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (isEditMode) Color.White else WarmInk
+            )
         }
     }
 }
