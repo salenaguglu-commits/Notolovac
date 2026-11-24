@@ -116,6 +116,7 @@ fun SheetResultScreen(
     onSharePng: () -> Unit,
     onOctaveChange: (Int) -> Unit,
     onPianoKeyClick: (Int) -> Unit,
+    onPianoKeyRelease: (Int) -> Unit = {},
     onAuditionNote: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -395,6 +396,7 @@ fun SheetResultScreen(
                             startOctave = keyboardStartOctave,
                             labelMode = labelMode,
                             onKeyClick = onPianoKeyClick,
+                            onKeyRelease = onPianoKeyRelease,
                             keyboardHeight = 92.dp
                         )
 
@@ -566,6 +568,7 @@ fun SheetResultScreen(
                                     startOctave = keyboardStartOctave,
                                     labelMode = labelMode,
                                     onKeyClick = onPianoKeyClick,
+                                    onKeyRelease = onPianoKeyRelease,
                                     keyboardHeight = 76.dp
                                 )
                             }

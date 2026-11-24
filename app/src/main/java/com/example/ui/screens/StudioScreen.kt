@@ -1,15 +1,20 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +39,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
@@ -48,13 +54,22 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -65,6 +80,7 @@ import com.example.audio.MetronomeEngine
 import com.example.data.UserSettings
 import com.example.model.MusicTheory
 import com.example.model.NoteLabelMode
+import com.example.ui.components.AboutAppDialog
 import com.example.ui.components.GlowingPianoKeyboard
 import com.example.ui.components.LiveSheetStrip
 import com.example.ui.components.OctaveSelectorRow
@@ -102,10 +118,31 @@ fun StudioScreen(
     onBeatsPerMeasureChange: (Int) -> Unit,
     onOctaveChange: (Int) -> Unit,
     onPianoKeyClick: (Int) -> Unit,
+    onPianoKeyRelease: (Int) -> Unit = {},
+    onClearKeyboardHistory: () -> Unit = {},
+    isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val activeKeyMidi = uiState.liveMidiNote ?: uiState.keyboardPressedMidi
     val scrollState = rememberScrollState()
+    var showAboutDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showAboutDialog) {
+        AboutAppDialog(onDismiss = { showAboutDialog = false })
+    }
+
+    if (isLandscape) {
+        LandscapePianoStage(
+            uiState = uiState,
+            settings = settings,
+            onOctaveChange = onOctaveChange,
+            onPianoKeyClick = onPianoKeyClick,
+            onPianoKeyRelease = onPianoKeyRelease,
+            onClearKeyboardHistory = onClearKeyboardHistory,
+            modifier = modifier
+        )
+        return
+    }
 
     Box(
         modifier = modifier
@@ -125,7 +162,8 @@ fun StudioScreen(
             StudioHeaderRow(
                 settings = settings,
                 isRecording = uiState.isRecording,
-                onOpenTuneDialog = onOpenTuneDialog
+                onOpenTuneDialog = onOpenTuneDialog,
+                onLongPressMascot = { showAboutDialog = true }
             )
 
             // Mic permission friendly banner if not yet granted
@@ -241,8 +279,13 @@ fun StudioScreen(
 
                     // Live Canvas Sheet Music Strip
                     LiveSheetStrip(
-                        capturedNotes = uiState.liveCapturedNotes,
+                        capturedNotes = if (uiState.isRecording || uiState.liveCapturedNotes.isNotEmpty()) {
+                            uiState.liveCapturedNotes
+                        } else {
+                            uiState.keyboardPlayedHistory
+                        },
                         liveMidiNote = uiState.liveMidiNote,
+                        liveMidiNotes = uiState.keyboardActiveNotes,
                         beatsPerMeasure = settings.beatsPerMeasure,
                         labelMode = settings.noteLabelMode
                     )
@@ -298,9 +341,11 @@ fun StudioScreen(
 
                 GlowingPianoKeyboard(
                     activeMidiNote = activeKeyMidi,
+                    activeMidiNotes = uiState.keyboardActiveNotes,
                     startOctave = uiState.keyboardStartOctave,
                     labelMode = settings.noteLabelMode,
                     onKeyClick = onPianoKeyClick,
+                    onKeyRelease = onPianoKeyRelease,
                     keyboardHeight = 114.dp
                 )
             }
@@ -316,12 +361,138 @@ fun StudioScreen(
     }
 }
 
+/**
+ * Full-width distraction-free Landscape Piano Stage:
+ * Hides top header, metronome, tuner, and navigation so the child gets a wide dynamic live staff
+ * on top and a tall, spacious 2-octave multi-touch/glissando keyboard across the bottom.
+ */
+@Composable
+private fun LandscapePianoStage(
+    uiState: NotolovacUiState,
+    settings: UserSettings,
+    onOctaveChange: (Int) -> Unit,
+    onPianoKeyClick: (Int) -> Unit,
+    onPianoKeyRelease: (Int) -> Unit,
+    onClearKeyboardHistory: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val activeKeyMidi = uiState.liveMidiNote ?: uiState.keyboardPressedMidi
+    val displayedNotes = if (uiState.isRecording || uiState.liveCapturedNotes.isNotEmpty()) {
+        uiState.liveCapturedNotes
+    } else {
+        uiState.keyboardPlayedHistory
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CreamPaper)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("landscape_piano_stage"),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Top 42%: Wide Dynamic Live Music Staff showing played notes & live chords
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color(0xFFFFFDF8),
+            border = BorderStroke(
+                width = if (uiState.isRecording) 2.dp else 1.5.dp,
+                color = if (uiState.isRecording) CoralPrimary else WarmCardBorder
+            ),
+            shadowElevation = 2.dp,
+            modifier = Modifier
+                .weight(0.42f)
+                .fillMaxWidth()
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                LiveSheetStrip(
+                    capturedNotes = displayedNotes,
+                    liveMidiNote = uiState.liveMidiNote,
+                    liveMidiNotes = uiState.keyboardActiveNotes,
+                    beatsPerMeasure = settings.beatsPerMeasure,
+                    labelMode = settings.noteLabelMode,
+                    maxSlots = 13,
+                    fillAvailableHeight = true,
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                // Ultra-discreet octave toggle & clear staff controls tucked in top-right corner
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (!uiState.isRecording && uiState.keyboardPlayedHistory.isNotEmpty()) {
+                        IconButton(
+                            onClick = onClearKeyboardHistory,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("landscape_clear_staff_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "Očisti note sa linija",
+                                tint = MutedInk,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    val nextOctave = if (uiState.keyboardStartOctave == 4) 3 else 4
+                    val octaveLabel = if (uiState.keyboardStartOctave == 4) "C4–C6" else "C3–C5"
+                    Surface(
+                        onClick = { onOctaveChange(nextOctave) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = HoneyGoldContainer.copy(alpha = 0.88f),
+                        border = BorderStroke(1.dp, HoneyGoldTertiary),
+                        modifier = Modifier
+                            .height(48.dp)
+                            .padding(vertical = 8.dp)
+                            .testTag("landscape_octave_toggle")
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 10.dp)
+                        ) {
+                            Text(
+                                text = octaveLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = WarmInk
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bottom 58%: Wide, tall full-screen multi-touch & glissando keyboard
+        GlowingPianoKeyboard(
+            activeMidiNote = activeKeyMidi,
+            activeMidiNotes = uiState.keyboardActiveNotes,
+            startOctave = uiState.keyboardStartOctave,
+            labelMode = settings.noteLabelMode,
+            onKeyClick = onPianoKeyClick,
+            onKeyRelease = onPianoKeyRelease,
+            keyboardHeight = null,
+            modifier = Modifier
+                .weight(0.58f)
+                .fillMaxWidth()
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StudioHeaderRow(
     settings: UserSettings,
     isRecording: Boolean,
-    onOpenTuneDialog: () -> Unit
+    onOpenTuneDialog: () -> Unit,
+    onLongPressMascot: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -331,14 +502,12 @@ private fun StudioHeaderRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_notolovac_icon_cat),
-                contentDescription = "Notolovac maskota",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(1.5.dp, WarmCardBorder, RoundedCornerShape(14.dp))
+            ShimmeringMascotIcon(
+                isRecording = isRecording,
+                onLongPress = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongPressMascot()
+                }
             )
             Column {
                 Text(
@@ -403,6 +572,144 @@ private fun StudioHeaderRow(
                         color = if (settings.isCalibrated) OnSageMintContainer else MutedInk
                     )
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ShimmeringMascotIcon(
+    isRecording: Boolean,
+    onLongPress: () -> Unit
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "mascotGlint")
+
+    // Subtle periodic glint every 6.8 seconds: calm most of the time, then a warm golden sweep
+    val shimmerProgress by infiniteTransition.animateFloat(
+        initialValue = -0.6f,
+        targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 6800
+                -0.6f at 0 using LinearEasing
+                -0.6f at 5200 using LinearEasing
+                1.6f at 6250 using LinearEasing
+                1.6f at 6800 using LinearEasing
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "mascotShimmerSweep"
+    )
+
+    val glowStrength by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 6800
+                0f at 0
+                0f at 5050
+                1f at 5750
+                0.85f at 6150
+                0f at 6700
+                0f at 6800
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "mascotGlowAlpha"
+    )
+
+    val activeGlow = if (isRecording) 0f else glowStrength
+    val iconScale = 1f + (activeGlow * 0.045f)
+    val borderColor = lerp(WarmCardBorder, HoneyGoldTertiary, activeGlow)
+    val borderWidth = (1.5f + activeGlow * 1.1f).dp
+    val shape = RoundedCornerShape(14.dp)
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(52.dp)
+    ) {
+        if (activeGlow > 0.02f) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                HoneyGoldTertiary.copy(alpha = 0.42f * activeGlow),
+                                CoralPrimary.copy(alpha = 0.14f * activeGlow),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+        }
+
+        Image(
+            painter = painterResource(id = R.drawable.ic_notolovac_icon_cat),
+            contentDescription = "Notolovac maskota — zadrži za informacije o aplikaciji",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(48.dp)
+                .scale(iconScale)
+                .clip(shape)
+                .drawWithContent {
+                    drawContent()
+                    if (!isRecording && shimmerProgress in -0.5f..1.5f) {
+                        val band = size.width * 0.45f
+                        val startX = shimmerProgress * size.width
+                        drawRect(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.White.copy(alpha = 0.55f),
+                                    HoneyGoldContainer.copy(alpha = 0.35f),
+                                    Color.Transparent
+                                ),
+                                start = Offset(startX - band, 0f),
+                                end = Offset(startX + band, size.height)
+                            )
+                        )
+                    }
+                }
+                .border(borderWidth, borderColor, shape)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongPress
+                )
+                .testTag("studio_mascot_icon")
+        )
+
+        if (activeGlow > 0.08f) {
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(14.dp)
+                    .scale(0.6f + 0.5f * activeGlow)
+            ) {
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val rOuter = size.minDimension * 0.48f
+                val rInner = rOuter * 0.30f
+                val star = Path().apply {
+                    moveTo(cx, cy - rOuter)
+                    lineTo(cx + rInner, cy - rInner)
+                    lineTo(cx + rOuter, cy)
+                    lineTo(cx + rInner, cy + rInner)
+                    lineTo(cx, cy + rOuter)
+                    lineTo(cx - rInner, cy + rInner)
+                    lineTo(cx - rOuter, cy)
+                    lineTo(cx - rInner, cy - rInner)
+                    close()
+                }
+                drawPath(star, color = HoneyGoldTertiary.copy(alpha = activeGlow))
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.9f * activeGlow),
+                    radius = rInner * 0.55f,
+                    center = Offset(cx, cy)
+                )
             }
         }
     }

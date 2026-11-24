@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -172,13 +173,18 @@ fun NotolovacApp(
 
     val showingSheetResult = uiState.activeSheet != null
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = CreamPaper,
-        contentWindowInsets = WindowInsets.safeDrawing,
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        bottomBar = {
-            if (!showingSheetResult) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isLandscapePianoStage = !showingSheetResult &&
+            uiState.currentTab == AppTab.STUDIO &&
+            maxWidth > maxHeight
+
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = CreamPaper,
+            contentWindowInsets = WindowInsets.safeDrawing,
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+            bottomBar = {
+                if (!showingSheetResult && !isLandscapePianoStage) {
                 NavigationBar(
                     containerColor = WarmSurface,
                     contentColor = WarmInk
@@ -270,6 +276,7 @@ fun NotolovacApp(
                 onSharePng = { shareActiveSheetPng() },
                 onOctaveChange = { viewModel.setKeyboardOctave(it) },
                 onPianoKeyClick = { viewModel.onSheetPianoKeyTapped(it) },
+                onPianoKeyRelease = { viewModel.onSheetPianoKeyReleased(it) },
                 onAuditionNote = { viewModel.onPianoKeyTapped(it) },
                 modifier = Modifier.padding(innerPadding)
             )
@@ -301,7 +308,10 @@ fun NotolovacApp(
                         onBpmChange = { viewModel.setMetronomeBpm(it) },
                         onBeatsPerMeasureChange = { viewModel.setBeatsPerMeasure(it) },
                         onOctaveChange = { viewModel.setKeyboardOctave(it) },
-                        onPianoKeyClick = { viewModel.onPianoKeyTapped(it) }
+                        onPianoKeyClick = { viewModel.onPianoKeyPressed(it) },
+                        onPianoKeyRelease = { viewModel.onPianoKeyReleased(it) },
+                        onClearKeyboardHistory = { viewModel.clearKeyboardHistory() },
+                        isLandscape = isLandscapePianoStage
                     )
 
                     AppTab.NOTEBOOK -> NotebookScreen(
@@ -313,6 +323,7 @@ fun NotolovacApp(
                 }
             }
         }
+    }
     }
 
     // Tune / Piano Calibration Modal Dialog

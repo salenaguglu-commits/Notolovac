@@ -56,29 +56,43 @@ fun LiveSheetStrip(
     liveMidiNote: Int?,
     beatsPerMeasure: Int,
     labelMode: NoteLabelMode,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    liveMidiNotes: Set<Int> = emptySet(),
+    maxSlots: Int = 8,
+    fillAvailableHeight: Boolean = false
 ) {
     val textMeasurer = rememberTextMeasurer()
-    val visibleNotes = remember(capturedNotes) { capturedNotes.takeLast(7) }
+    val historyCapacity = (maxSlots - 1).coerceAtLeast(1)
+    val visibleNotes = remember(capturedNotes, historyCapacity) {
+        capturedNotes.takeLast(historyCapacity)
+    }
+    val activeChordMidis = remember(liveMidiNote, liveMidiNotes) {
+        buildSet {
+            if (liveMidiNote != null) add(liveMidiNote)
+            addAll(liveMidiNotes)
+        }.sorted()
+    }
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(176.dp)
+            .then(if (fillAvailableHeight) Modifier else Modifier.height(176.dp))
             .testTag("live_sheet_strip")
     ) {
-        val leftPad = 18.dp.toPx()
-        val rightPad = 18.dp.toPx()
-        val lineSpacing = 13.dp.toPx()
+        val leftPad = 16.dp.toPx()
+        val rightPad = 16.dp.toPx()
+        // Adapt staff geometry gracefully to compact landscape strips as well as portrait cards
+        val lineSpacing = (size.height / 13.5f).coerceIn(7.5.dp.toPx(), 13.dp.toPx())
         val halfStep = lineSpacing / 2f
-        val staffTop = 44.dp.toPx()
-        val staffBottom = staffTop + 4f * lineSpacing
+        val staffHeight = 4f * lineSpacing
+        val staffTop = ((size.height - staffHeight) * 0.44f).coerceAtLeast(22.dp.toPx())
+        val staffBottom = staffTop + staffHeight
 
-        // Subtle notebook decorative faint lines
+        // Subtle notebook decorative faint top line
         drawLine(
             color = NotebookRuleLine.copy(alpha = 0.65f),
-            start = Offset(0f, 12.dp.toPx()),
-            end = Offset(size.width, 12.dp.toPx()),
+            start = Offset(0f, 10.dp.toPx()),
+            end = Offset(size.width, 10.dp.toPx()),
             strokeWidth = 1.dp.toPx()
         )
 
@@ -89,7 +103,7 @@ fun LiveSheetStrip(
                 color = MutedInk.copy(alpha = 0.72f),
                 start = Offset(leftPad, y),
                 end = Offset(size.width - rightPad, y),
-                strokeWidth = 1.5.dp.toPx()
+                strokeWidth = 1.4.dp.toPx()
             )
         }
         // Start bar line
@@ -101,7 +115,7 @@ fun LiveSheetStrip(
         )
 
         drawTrebleClefVector(
-            cx = leftPad + 22.dp.toPx(),
+            cx = leftPad + 20.dp.toPx(),
             staffTop = staffTop,
             lineSpacing = lineSpacing,
             color = WarmInk
@@ -110,15 +124,15 @@ fun LiveSheetStrip(
         drawTimeSignature(
             textMeasurer = textMeasurer,
             beatsPerMeasure = beatsPerMeasure,
-            cx = leftPad + 54.dp.toPx(),
+            cx = leftPad + 50.dp.toPx(),
             staffTop = staffTop,
             lineSpacing = lineSpacing
         )
 
-        val startX = leftPad + 82.dp.toPx()
-        val endX = size.width - rightPad - 16.dp.toPx()
-        val totalSlots = 8
-        val slotWidth = ((endX - startX) / totalSlots).coerceAtLeast(28.dp.toPx())
+        val startX = leftPad + 76.dp.toPx()
+        val endX = size.width - rightPad - 14.dp.toPx()
+        val totalSlots = maxSlots.coerceAtLeast(4)
+        val slotWidth = ((endX - startX) / totalSlots).coerceAtLeast(26.dp.toPx())
 
         visibleNotes.forEachIndexed { idx, note ->
             if (!note.isRest) {
@@ -138,22 +152,25 @@ fun LiveSheetStrip(
             }
         }
 
-        // Live glowing currently heard note
-        if (liveMidiNote != null) {
+        // Live glowing currently heard / pressed note(s) — supports full multi-touch chords!
+        if (activeChordMidis.isNotEmpty()) {
             val liveSlotIndex = visibleNotes.size.coerceAtMost(totalSlots - 1)
             val cx = startX + liveSlotIndex * slotWidth + slotWidth * 0.45f
-            drawSingleNote(
-                textMeasurer = textMeasurer,
-                midiNote = liveMidiNote,
-                duration = NoteDuration.QUARTER,
-                cx = cx,
-                staffBottom = staffBottom,
-                lineSpacing = lineSpacing,
-                halfStep = halfStep,
-                labelMode = labelMode,
-                highlightColor = HoneyGoldTertiary,
-                usePastelAccent = true
-            )
+            activeChordMidis.forEachIndexed { chordIdx, midi ->
+                drawSingleNote(
+                    textMeasurer = textMeasurer,
+                    midiNote = midi,
+                    duration = NoteDuration.QUARTER,
+                    cx = cx,
+                    staffBottom = staffBottom,
+                    lineSpacing = lineSpacing,
+                    halfStep = halfStep,
+                    // Avoid overlapping text labels when stacking 2+ simultaneous chord tones
+                    labelMode = if (activeChordMidis.size > 1 && chordIdx > 0) NoteLabelMode.NONE else labelMode,
+                    highlightColor = HoneyGoldTertiary,
+                    usePastelAccent = true
+                )
+            }
         }
     }
 }

@@ -40,4 +40,11 @@
     <string name="edit_add_note">Dodaj</string>
     <string name="share_sheet_chooser">Podeli notni zapis</string>
     <string name="default_song_title">Moja nova melodija</string>
+    <string name="action_close">Zatvori</string>
+    <string name="about_fox_image_desc">Lisica koja svira klavir</string>
+    <string name="about_title_format">Elenin mali Notolovac – verzija %1$s</string>
+    <string name="about_privacy_safety_body">Ova aplikacija je potpuno besplatna, ne sakuplja nikakve podatke, nema fizički pristup internetu i potpuno je bezbedna za decu.</string>
+    <string name="about_community_donation_body">Za više informacija posetite bloom-it.rs/freebies, a ko želi, može da donira neki dinar za mace i kuce Beograda koje nemaju svoj dom.</string>
+    <string name="about_website_url">https://bloom-it.rs/freebies/</string>
+    <string name="about_website_cta">Poseti bloom-it.rs/freebies</string>
 </resources>

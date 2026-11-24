@@ -5,7 +5,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,13 +22,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -56,9 +63,73 @@ private val BLACK_KEY_SPECS = listOf(
 )
 
 /**
- * Tactile, kid-friendly glowing piano keyboard spanning 1.5 to 2 octaves (15 white keys: e.g. C4..C6).
- * Highlights the active MIDI note heard from the microphone or played back from a saved melody,
- * and allows tapping any key to audition real piano tones.
+ * Pure geometric hit-tester for the 2-layer piano keyboard (black keys take priority over white keys
+ * in the upper 56% region). Extracted for exact multi-touch & glissando accuracy and unit testing.
+ */
+internal object PianoKeyboardHitTest {
+    const val BLACK_KEY_WIDTH_RATIO = 0.64f
+    const val BLACK_KEY_HEIGHT_RATIO = 0.56f
+
+    fun whiteKeyMidis(startOctave: Int, octaveSpan: Int): List<Int> {
+        val baseMidi = (startOctave + 1) * 12
+        return buildList {
+            for (oct in 0 until octaveSpan) {
+                WHITE_KEY_OFFSETS.forEach { offset -> add(baseMidi + oct * 12 + offset) }
+            }
+            add(baseMidi + octaveSpan * 12)
+        }
+    }
+
+    fun blackKeys(startOctave: Int, octaveSpan: Int): List<Pair<Int, Float>> {
+        val baseMidi = (startOctave + 1) * 12
+        return buildList {
+            for (oct in 0 until octaveSpan) {
+                BLACK_KEY_SPECS.forEach { (semi, pos) ->
+                    add((baseMidi + oct * 12 + semi) to (oct * 7 + pos))
+                }
+            }
+        }
+    }
+
+    fun hitTest(
+        x: Float,
+        y: Float,
+        widthPx: Float,
+        heightPx: Float,
+        whiteKeyMidis: List<Int>,
+        blackKeys: List<Pair<Int, Float>>
+    ): Int? {
+        if (widthPx <= 0f || heightPx <= 0f || whiteKeyMidis.isEmpty()) return null
+        if (x < 0f || x > widthPx || y < 0f || y > heightPx) return null
+
+        val whiteKeyWidth = widthPx / whiteKeyMidis.size
+        val blackKeyWidth = whiteKeyWidth * BLACK_KEY_WIDTH_RATIO
+        val blackKeyHeight = heightPx * BLACK_KEY_HEIGHT_RATIO
+
+        // Priority 1: Black keys in upper region
+        if (y <= blackKeyHeight) {
+            for ((midi, slotPos) in blackKeys) {
+                val left = whiteKeyWidth * slotPos
+                val right = left + blackKeyWidth
+                if (x in left..right) {
+                    return midi
+                }
+            }
+        }
+
+        // Priority 2: White keys across full height
+        val whiteIdx = (x / whiteKeyWidth).toInt().coerceIn(0, whiteKeyMidis.lastIndex)
+        return whiteKeyMidis[whiteIdx]
+    }
+}
+
+/**
+ * Tactile, kid-friendly glowing piano keyboard spanning 1 to 2 octaves (default 15 white keys: C4..C6).
+ *
+ * Supports:
+ * - True multi-touch polyphony (press multiple fingers at once to play chords / two-hand intervals)
+ * - Smooth glissando swiping (slide fingers smoothly across white & black keys without parent scroll stealing the gesture)
+ * - Synchronized visual glow for live microphone pitch, melody playback, and all simultaneously touched keys
  */
 @Composable
 fun GlowingPianoKeyboard(
@@ -67,28 +138,35 @@ fun GlowingPianoKeyboard(
     labelMode: NoteLabelMode,
     onKeyClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    keyboardHeight: Dp = 112.dp,
+    activeMidiNotes: Set<Int> = emptySet(),
+    onKeyRelease: (Int) -> Unit = {},
+    keyboardHeight: Dp? = 112.dp,
     octaveSpan: Int = 2 // 2 full octaves + top C (15 white keys) or 1 octave + C (8 white keys)
 ) {
-    val baseMidi = (startOctave + 1) * 12 // C4 = 60, C3 = 48
-    val whiteKeyMidis = buildList {
-        for (oct in 0 until octaveSpan) {
-            WHITE_KEY_OFFSETS.forEach { offset -> add(baseMidi + oct * 12 + offset) }
-        }
-        add(baseMidi + octaveSpan * 12) // closing C at top
+    val whiteKeyMidis = remember(startOctave, octaveSpan) {
+        PianoKeyboardHitTest.whiteKeyMidis(startOctave, octaveSpan)
+    }
+    val blackKeys = remember(startOctave, octaveSpan) {
+        PianoKeyboardHitTest.blackKeys(startOctave, octaveSpan)
     }
 
-    val blackKeys = buildList {
-        for (oct in 0 until octaveSpan) {
-            BLACK_KEY_SPECS.forEach { (semi, pos) ->
-                add((baseMidi + oct * 12 + semi) to (oct * 7 + pos))
-            }
+    val currentOnKeyPress by rememberUpdatedState(onKeyClick)
+    val currentOnKeyRelease by rememberUpdatedState(onKeyRelease)
+    var touchedMidis by remember(startOctave, octaveSpan) { mutableStateOf(emptySet<Int>()) }
+
+    // Ensure no voices stay stuck if octave changes or keyboard leaves composition
+    DisposableEffect(startOctave, octaveSpan) {
+        onDispose {
+            val held = touchedMidis
+            touchedMidis = emptySet()
+            held.forEach { midi -> currentOnKeyRelease(midi) }
         }
     }
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (keyboardHeight != null) Modifier.height(keyboardHeight + 8.dp) else Modifier.fillMaxHeight())
             .testTag("glowing_piano_keyboard"),
         shape = RoundedCornerShape(18.dp),
         color = WarmInk,
@@ -97,13 +175,64 @@ fun GlowingPianoKeyboard(
     ) {
         BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(keyboardHeight)
+                .fillMaxSize()
                 .padding(horizontal = 4.dp, vertical = 4.dp)
+                .pointerInput(whiteKeyMidis, blackKeys) {
+                    val pointerToMidi = mutableMapOf<PointerId, Int>()
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            var changed = false
+
+                            for (change in event.changes) {
+                                if (change.pressed) {
+                                    // Prevent outer verticalScroll from stealing glissando swipes or chords
+                                    change.consume()
+                                    val newMidi = PianoKeyboardHitTest.hitTest(
+                                        x = change.position.x,
+                                        y = change.position.y,
+                                        widthPx = size.width.toFloat(),
+                                        heightPx = size.height.toFloat(),
+                                        whiteKeyMidis = whiteKeyMidis,
+                                        blackKeys = blackKeys
+                                    )
+                                    val oldMidi = pointerToMidi[change.id]
+                                    if (newMidi != oldMidi) {
+                                        if (newMidi != null) {
+                                            pointerToMidi[change.id] = newMidi
+                                        } else {
+                                            pointerToMidi.remove(change.id)
+                                        }
+                                        if (oldMidi != null && !pointerToMidi.containsValue(oldMidi)) {
+                                            currentOnKeyRelease(oldMidi)
+                                        }
+                                        if (newMidi != null) {
+                                            currentOnKeyPress(newMidi)
+                                        }
+                                        changed = true
+                                    }
+                                } else {
+                                    val oldMidi = pointerToMidi.remove(change.id)
+                                    if (oldMidi != null) {
+                                        if (!pointerToMidi.containsValue(oldMidi)) {
+                                            currentOnKeyRelease(oldMidi)
+                                        }
+                                        changed = true
+                                    }
+                                }
+                            }
+
+                            if (changed) {
+                                touchedMidis = pointerToMidi.values.toSet()
+                            }
+                        }
+                    }
+                }
         ) {
             val whiteKeyWidth = maxWidth / whiteKeyMidis.size
-            val blackKeyWidth = whiteKeyWidth * 0.64f
-            val blackKeyHeight = keyboardHeight * 0.56f
+            val blackKeyWidth = whiteKeyWidth * PianoKeyboardHitTest.BLACK_KEY_WIDTH_RATIO
+            val blackKeyHeight = maxHeight * PianoKeyboardHitTest.BLACK_KEY_HEIGHT_RATIO
+            val isWideKeyLayout = whiteKeyWidth >= 34.dp
 
             // Layer 1: White Keys
             Row(
@@ -111,11 +240,12 @@ fun GlowingPianoKeyboard(
                 horizontalArrangement = Arrangement.spacedBy(1.5.dp)
             ) {
                 whiteKeyMidis.forEach { midi ->
-                    val isActive = activeMidiNote == midi
+                    val isTouched = midi in touchedMidis
+                    val isActive = isTouched || activeMidiNote == midi || midi in activeMidiNotes
                     val accent = NotePastelColors[MusicTheory.diatonicColorIndex(midi) % NotePastelColors.size]
                     val bgColor by animateColorAsState(
                         targetValue = if (isActive) accent else Color(0xFFFFFDF9),
-                        animationSpec = spring(stiffness = 650f),
+                        animationSpec = spring(stiffness = 750f),
                         label = "whiteKeyColor"
                     )
                     val isMiddleC = midi == 60
@@ -129,6 +259,7 @@ fun GlowingPianoKeyboard(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
+                            .offset(y = if (isTouched) 1.5.dp else 0.dp)
                             .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp, topStart = 3.dp, topEnd = 3.dp))
                             .background(
                                 brush = if (isActive) {
@@ -142,7 +273,6 @@ fun GlowingPianoKeyboard(
                                 color = if (isActive) WarmInk else WarmCardBorder,
                                 shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp, topStart = 3.dp, topEnd = 3.dp)
                             )
-                            .clickable { onKeyClick(midi) }
                             .testTag("piano_key_$midi"),
                         contentAlignment = Alignment.BottomCenter
                     ) {
@@ -163,7 +293,11 @@ fun GlowingPianoKeyboard(
                             if (label.isNotEmpty()) {
                                 Text(
                                     text = label,
-                                    fontSize = if (whiteKeyMidis.size > 10) 9.sp else 11.sp,
+                                    fontSize = when {
+                                        isWideKeyLayout -> 13.sp
+                                        whiteKeyMidis.size > 10 -> 9.sp
+                                        else -> 11.sp
+                                    },
                                     fontWeight = if (isActive || isMiddleC) FontWeight.Bold else FontWeight.SemiBold,
                                     color = if (isActive) Color.White else if (isMiddleC) CoralPrimary else MutedInk,
                                     maxLines = 1
@@ -176,20 +310,24 @@ fun GlowingPianoKeyboard(
 
             // Layer 2: Black Keys
             blackKeys.forEach { (midi, slotPos) ->
-                val isActive = activeMidiNote == midi
+                val isTouched = midi in touchedMidis
+                val isActive = isTouched || activeMidiNote == midi || midi in activeMidiNotes
                 val blackColor by animateColorAsState(
                     targetValue = if (isActive) HoneyGoldTertiary else Color(0xFF352C27),
-                    animationSpec = spring(stiffness = 700f),
+                    animationSpec = spring(stiffness = 800f),
                     label = "blackKeyColor"
                 )
                 val xOffset = whiteKeyWidth * slotPos
 
                 Box(
                     modifier = Modifier
-                        .offset(x = xOffset)
+                        .offset(x = xOffset, y = if (isTouched) 1.dp else 0.dp)
                         .width(blackKeyWidth)
                         .height(blackKeyHeight)
-                        .shadow(elevation = if (isActive) 6.dp else 3.dp, shape = RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
+                        .shadow(
+                            elevation = if (isActive) 6.dp else 3.dp,
+                            shape = RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp)
+                        )
                         .clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
                         .background(blackColor)
                         .border(
@@ -197,17 +335,16 @@ fun GlowingPianoKeyboard(
                             color = if (isActive) HoneyGoldContainer else Color(0xFF1D1714),
                             shape = RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp)
                         )
-                        .clickable { onKeyClick(midi) }
                         .testTag("piano_key_$midi"),
                     contentAlignment = Alignment.BottomCenter
                 ) {
                     if (isActive) {
                         Text(
                             text = "#",
-                            fontSize = 9.sp,
+                            fontSize = if (isWideKeyLayout) 11.sp else 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = WarmInk,
-                            modifier = Modifier.padding(bottom = 4.dp)
+                            modifier = Modifier.padding(bottom = 5.dp)
                         )
                     }
                 }

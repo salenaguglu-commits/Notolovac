@@ -109,6 +109,8 @@ data class NotolovacUiState(
     val isMicClipping: Boolean = false,
     val liveCapturedNotes: List<DetectedNote> = emptyList(),
     val keyboardPressedMidi: Int? = null,
+    val keyboardActiveNotes: Set<Int> = emptySet(),
+    val keyboardPlayedHistory: List<DetectedNote> = emptyList(),
     val keyboardStartOctave: Int = 4, // 3 (C3..B4) or 4 (C4..B5)
     val metronomeRunning: Boolean = false,
     val currentBeatIndex: Int = -1,
@@ -239,6 +241,42 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
             delay(380)
             _uiState.update { it.copy(keyboardPressedMidi = null) }
         }
+    }
+
+    private var keyboardHistoryIdCounter: Long = 1L
+
+    fun onPianoKeyPressed(midiNote: Int) {
+        synthesizer.noteOn(
+            midiNote = midiNote,
+            calibrationCents = settings.value.calibrationCents
+        )
+        val nowMs = System.currentTimeMillis()
+        val entry = DetectedNote(
+            id = keyboardHistoryIdCounter++,
+            midiNote = midiNote,
+            startTimeMs = nowMs,
+            durationMs = 400L,
+            beats = 1.0f,
+            confidence = 1f,
+            isRest = false
+        )
+        _uiState.update { state ->
+            state.copy(
+                keyboardActiveNotes = state.keyboardActiveNotes + midiNote,
+                keyboardPlayedHistory = (state.keyboardPlayedHistory + entry).takeLast(14)
+            )
+        }
+    }
+
+    fun onPianoKeyReleased(midiNote: Int) {
+        synthesizer.noteOff(midiNote)
+        _uiState.update { state ->
+            state.copy(keyboardActiveNotes = state.keyboardActiveNotes - midiNote)
+        }
+    }
+
+    fun clearKeyboardHistory() {
+        _uiState.update { it.copy(keyboardPlayedHistory = emptyList()) }
     }
 
     // ---- RECORDING ("SLUŠAJ SADA") ----
@@ -981,7 +1019,14 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         if (sheet != null && sheet.isEditMode && sheet.selectedNoteIndex != null) {
             setSelectedNotePitch(midiNote)
         } else {
-            onPianoKeyTapped(midiNote)
+            onPianoKeyPressed(midiNote)
+        }
+    }
+
+    fun onSheetPianoKeyReleased(midiNote: Int) {
+        val sheet = _uiState.value.activeSheet
+        if (sheet == null || !sheet.isEditMode) {
+            onPianoKeyReleased(midiNote)
         }
     }
 
