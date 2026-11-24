@@ -30,6 +30,14 @@
     <string name="scale_cal_stop">Zaustavi kalibraciju</string>
     <string name="scale_cal_retry">Kalibriši skalu ponovo</string>
     <string name="scale_cal_use_profile">Gotovo — koristi ovaj profil</string>
+    <string name="action_edit_notes">Izmeni</string>
+    <string name="action_done_editing">Gotovo</string>
+    <string name="edit_pitch_section">Visina note (pomeri gore/dole)</string>
+    <string name="edit_pitch_down">Niže</string>
+    <string name="edit_pitch_up">Više</string>
+    <string name="edit_keyboard_hint">Ili jednostavno dodirni tačnu dirku na klavijaturi ispod!</string>
+    <string name="edit_duration_section">Dužina trajanja note</string>
+    <string name="edit_add_note">Dodaj</string>
     <string name="share_sheet_chooser">Podeli notni zapis</string>
     <string name="default_song_title">Moja nova melodija</string>
 </resources>

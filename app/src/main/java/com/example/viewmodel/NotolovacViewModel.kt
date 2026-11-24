@@ -19,7 +19,9 @@ import com.example.data.UserPreferencesRepository
 import com.example.data.UserSettings
 import com.example.model.DetectedNote
 import com.example.model.MusicTheory
+import com.example.model.NoteDuration
 import com.example.model.NoteLabelMode
+import com.example.model.SheetNoteEditor
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -89,9 +91,8 @@ data class ActiveSheetState(
     val bpm: Int = 90,
     val beatsPerMeasure: Int = 4,
     val calibrationCentsUsed: Float = 0f,
-    val detectedKeyName: String? = null,
-    val harmonicallyRefinedCount: Int = 0,
     val selectedNoteIndex: Int? = null,
+    val isEditMode: Boolean = false,
     val isPlaying: Boolean = false,
     val playingNoteIndex: Int? = null,
     val isSaved: Boolean = false
@@ -329,8 +330,6 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
 
         val quantizedNotes = transcription?.notes.orEmpty()
         val effectiveBpm = transcription?.effectiveBpm ?: currentSettings.metronomeBpm
-        val detectedKeyName = transcription?.detectedKey?.serbianName
-        val refinedCount = transcription?.harmonicallyRefinedCount ?: 0
         val playableCount = quantizedNotes.count { !it.isRest }
         if (playableCount == 0) {
             _uiState.update {
@@ -359,8 +358,6 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                     bpm = effectiveBpm,
                     beatsPerMeasure = currentSettings.beatsPerMeasure,
                     calibrationCentsUsed = currentSettings.calibrationCents,
-                    detectedKeyName = detectedKeyName,
-                    harmonicallyRefinedCount = refinedCount,
                     isSaved = false
                 )
             )
@@ -817,14 +814,185 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun toggleEditMode() {
+        val sheet = _uiState.value.activeSheet ?: return
+        stopPlayback()
+        val entering = !sheet.isEditMode
+        val nextSelected = if (entering) {
+            sheet.selectedNoteIndex?.takeIf { it in sheet.notes.indices }
+                ?: sheet.notes.indexOfFirst { !it.isRest }.takeIf { it >= 0 }
+                ?: sheet.notes.indices.firstOrNull()
+        } else {
+            null
+        }
+        val selectedMidi = nextSelected?.let { sheet.notes.getOrNull(it) }?.takeIf { !it.isRest }?.midiNote
+        _uiState.update { state ->
+            val adjustedOctave = adjustOctaveForMidi(state.keyboardStartOctave, selectedMidi)
+            state.copy(
+                keyboardStartOctave = adjustedOctave,
+                activeSheet = sheet.copy(
+                    isEditMode = entering,
+                    selectedNoteIndex = nextSelected
+                )
+            )
+        }
+    }
+
+    fun enterEditModeForNote(index: Int) {
+        val sheet = _uiState.value.activeSheet ?: return
+        if (index !in sheet.notes.indices) return
+        stopPlayback()
+        val note = sheet.notes[index]
+        _uiState.update { state ->
+            val adjustedOctave = adjustOctaveForMidi(
+                state.keyboardStartOctave,
+                note.takeIf { !it.isRest }?.midiNote
+            )
+            state.copy(
+                keyboardStartOctave = adjustedOctave,
+                activeSheet = sheet.copy(
+                    isEditMode = true,
+                    selectedNoteIndex = index
+                )
+            )
+        }
+    }
+
     fun selectAndPreviewNote(index: Int) {
         val sheet = _uiState.value.activeSheet ?: return
         val note = sheet.notes.getOrNull(index) ?: return
         _uiState.update { state ->
-            state.copy(activeSheet = sheet.copy(selectedNoteIndex = index))
+            val adjustedOctave = adjustOctaveForMidi(
+                state.keyboardStartOctave,
+                note.takeIf { !it.isRest }?.midiNote
+            )
+            state.copy(
+                keyboardStartOctave = adjustedOctave,
+                activeSheet = sheet.copy(selectedNoteIndex = index)
+            )
         }
         if (!note.isRest) {
             onPianoKeyTapped(note.midiNote)
+        }
+    }
+
+    fun selectAdjacentNote(delta: Int) {
+        val sheet = _uiState.value.activeSheet ?: return
+        if (sheet.notes.isEmpty()) return
+        val current = sheet.selectedNoteIndex ?: 0
+        val nextIdx = (current + delta).coerceIn(0, sheet.notes.lastIndex)
+        if (nextIdx != current) {
+            selectAndPreviewNote(nextIdx)
+        }
+    }
+
+    fun stepSelectedNotePitch(direction: Int) {
+        val sheet = _uiState.value.activeSheet ?: return
+        val idx = sheet.selectedNoteIndex ?: return
+        val note = sheet.notes.getOrNull(idx) ?: return
+        if (note.isRest) return
+        val nextMidi = SheetNoteEditor.stepDiatonic(note.midiNote, direction)
+        if (nextMidi != note.midiNote) {
+            setSelectedNotePitch(nextMidi)
+        }
+    }
+
+    fun toggleSelectedNoteSharp() {
+        val sheet = _uiState.value.activeSheet ?: return
+        val idx = sheet.selectedNoteIndex ?: return
+        val note = sheet.notes.getOrNull(idx) ?: return
+        if (note.isRest) return
+        val nextMidi = SheetNoteEditor.toggleSharp(note.midiNote)
+        if (nextMidi != note.midiNote) {
+            setSelectedNotePitch(nextMidi)
+        }
+    }
+
+    fun setSelectedNotePitch(newMidi: Int) {
+        val sheet = _uiState.value.activeSheet ?: return
+        val idx = sheet.selectedNoteIndex ?: return
+        if (idx !in sheet.notes.indices) return
+        stopPlayback()
+        val clamped = newMidi.coerceIn(MusicTheory.MIN_PIANO_MIDI, MusicTheory.MAX_PIANO_MIDI)
+        val updated = SheetNoteEditor.updatePitch(sheet.notes, idx, clamped)
+        _uiState.update { state ->
+            state.copy(
+                keyboardStartOctave = adjustOctaveForMidi(state.keyboardStartOctave, clamped),
+                activeSheet = sheet.copy(
+                    notes = updated,
+                    isSaved = false
+                )
+            )
+        }
+        onPianoKeyTapped(clamped)
+    }
+
+    fun setSelectedNoteDuration(duration: NoteDuration) {
+        val sheet = _uiState.value.activeSheet ?: return
+        val idx = sheet.selectedNoteIndex ?: return
+        val note = sheet.notes.getOrNull(idx) ?: return
+        stopPlayback()
+        val updated = SheetNoteEditor.updateDuration(sheet.notes, idx, duration, sheet.bpm)
+        _uiState.update { state ->
+            state.copy(
+                activeSheet = sheet.copy(
+                    notes = updated,
+                    isSaved = false
+                )
+            )
+        }
+        if (!note.isRest) {
+            val msPerBeat = 60_000.0 / sheet.bpm.coerceIn(50, 160)
+            val previewMs = (duration.beats * msPerBeat).toInt().coerceIn(220, 1200)
+            synthesizer.playNote(
+                midiNote = note.midiNote,
+                durationMs = previewMs,
+                calibrationCents = settings.value.calibrationCents
+            )
+        }
+    }
+
+    fun insertNoteAfterSelected() {
+        val sheet = _uiState.value.activeSheet ?: return
+        stopPlayback()
+        val (updated, insertedIdx) = SheetNoteEditor.insertNoteAfter(
+            notes = sheet.notes,
+            selectedIndex = sheet.selectedNoteIndex,
+            bpm = sheet.bpm
+        )
+        val insertedNote = updated.getOrNull(insertedIdx)
+        _uiState.update { state ->
+            state.copy(
+                activeSheet = sheet.copy(
+                    notes = updated,
+                    selectedNoteIndex = insertedIdx,
+                    isEditMode = true,
+                    isSaved = false
+                )
+            )
+        }
+        if (insertedNote != null && !insertedNote.isRest) {
+            onPianoKeyTapped(insertedNote.midiNote)
+        }
+    }
+
+    fun onSheetPianoKeyTapped(midiNote: Int) {
+        val sheet = _uiState.value.activeSheet
+        if (sheet != null && sheet.isEditMode && sheet.selectedNoteIndex != null) {
+            setSelectedNotePitch(midiNote)
+        } else {
+            onPianoKeyTapped(midiNote)
+        }
+    }
+
+    private fun adjustOctaveForMidi(currentStartOctave: Int, midi: Int?): Int {
+        if (midi == null) return currentStartOctave
+        val lowVisible = (currentStartOctave + 1) * 12
+        val highVisible = lowVisible + 24
+        return when {
+            midi < lowVisible -> 3
+            midi > highVisible -> 4
+            else -> currentStartOctave
         }
     }
 
@@ -840,12 +1008,13 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         val sheet = _uiState.value.activeSheet ?: return
         if (index !in sheet.notes.indices) return
         stopPlayback()
-        val updated = sheet.notes.toMutableList().apply { removeAt(index) }
+        val (updated, nextSel) = SheetNoteEditor.removeNoteAt(sheet.notes, index)
         _uiState.update { state ->
             state.copy(
                 activeSheet = sheet.copy(
                     notes = updated,
-                    selectedNoteIndex = null,
+                    selectedNoteIndex = if (sheet.isEditMode) nextSel else null,
+                    isEditMode = sheet.isEditMode && updated.isNotEmpty(),
                     isSaved = false
                 )
             )
@@ -862,7 +1031,14 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
 
         playbackJob?.cancel()
         _uiState.update {
-            it.copy(activeSheet = sheet.copy(isPlaying = true, playingNoteIndex = null, selectedNoteIndex = null))
+            it.copy(
+                activeSheet = sheet.copy(
+                    isPlaying = true,
+                    isEditMode = false,
+                    playingNoteIndex = null,
+                    selectedNoteIndex = null
+                )
+            )
         }
 
         playbackJob = viewModelScope.launch {
@@ -874,11 +1050,11 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
                         state.copy(activeSheet = cur.copy(playingNoteIndex = idx))
                     } ?: state
                 }
-                val stepDurationMs = (note.beats * msPerBeat).toLong().coerceIn(180L, 2600L)
+                val stepDurationMs = (note.beats * msPerBeat).toLong().coerceIn(95L, 2600L)
                 if (!note.isRest) {
                     synthesizer.playNote(
                         midiNote = note.midiNote,
-                        durationMs = (stepDurationMs * 1.15).toInt().coerceAtLeast(320),
+                        durationMs = (stepDurationMs * 1.15).toInt().coerceAtLeast(220),
                         calibrationCents = settings.value.calibrationCents
                     )
                 }

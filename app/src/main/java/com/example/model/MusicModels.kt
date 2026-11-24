@@ -18,6 +18,7 @@ enum class NoteLabelMode(val key: String) {
 }
 
 enum class NoteDuration(val beats: Float, val serbianName: String) {
+    SIXTEENTH(0.25f, "Šesnaestina"),
     EIGHTH(0.5f, "Osmina"),
     QUARTER(1.0f, "Četvrtina"),
     HALF(2.0f, "Polovina"),
@@ -25,6 +26,7 @@ enum class NoteDuration(val beats: Float, val serbianName: String) {
 
     companion object {
         fun fromBeats(beats: Float): NoteDuration = when {
+            beats < 0.375f -> SIXTEENTH
             beats < 0.75f -> EIGHTH
             beats < 1.5f -> QUARTER
             beats < 3.0f -> HALF

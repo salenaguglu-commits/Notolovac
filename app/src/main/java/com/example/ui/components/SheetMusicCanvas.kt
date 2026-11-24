@@ -496,10 +496,15 @@ private fun DrawScope.drawSingleNote(
         }
     }
 
-    // Stem + eighth flag
+    // Stem + eighth (1 flag) / sixteenth (2 flags)
     if (duration != NoteDuration.WHOLE) {
         val stemUp = step < 6 // B4 and above -> stem goes down
         val stemLen = 3.1f * lineSpacing
+        val flagCount = when (duration) {
+            NoteDuration.SIXTEENTH -> 2
+            NoteDuration.EIGHTH -> 1
+            else -> 0
+        }
         if (stemUp) {
             val sx = cx + rx - 1.dp.toPx()
             drawLine(
@@ -509,20 +514,21 @@ private fun DrawScope.drawSingleNote(
                 strokeWidth = 2.dp.toPx(),
                 cap = StrokeCap.Round
             )
-            if (duration == NoteDuration.EIGHTH) {
+            for (f in 0 until flagCount) {
+                val fy = noteY - stemLen + f * 7.5.dp.toPx()
                 val flag = Path().apply {
-                    moveTo(sx, noteY - stemLen)
+                    moveTo(sx, fy)
                     quadraticTo(
                         sx + 11.dp.toPx(),
-                        noteY - stemLen + 7.dp.toPx(),
+                        fy + 6.5.dp.toPx(),
                         sx + 7.dp.toPx(),
-                        noteY - stemLen + 19.dp.toPx()
+                        fy + 16.5.dp.toPx()
                     )
                 }
                 drawPath(
                     path = flag,
                     color = noteColor,
-                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                    style = Stroke(width = 2.3.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
         } else {
@@ -534,20 +540,21 @@ private fun DrawScope.drawSingleNote(
                 strokeWidth = 2.dp.toPx(),
                 cap = StrokeCap.Round
             )
-            if (duration == NoteDuration.EIGHTH) {
+            for (f in 0 until flagCount) {
+                val fy = noteY + stemLen - f * 7.5.dp.toPx()
                 val flag = Path().apply {
-                    moveTo(sx, noteY + stemLen)
+                    moveTo(sx, fy)
                     quadraticTo(
                         sx + 11.dp.toPx(),
-                        noteY + stemLen - 7.dp.toPx(),
+                        fy - 6.5.dp.toPx(),
                         sx + 7.dp.toPx(),
-                        noteY + stemLen - 19.dp.toPx()
+                        fy - 16.5.dp.toPx()
                     )
                 }
                 drawPath(
                     path = flag,
                     color = noteColor,
-                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
+                    style = Stroke(width = 2.3.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
         }

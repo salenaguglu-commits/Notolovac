@@ -270,27 +270,34 @@ object SheetMusicBitmapExporter {
                     }
                     canvas.restore()
 
-                    // Stem & eighth flag
+                    // Stem & eighth (1 flag) / sixteenth (2 flags)
                     if (dur != NoteDuration.WHOLE) {
                         val stemUp = step < 6 // B4 or above -> stem down
                         val stemLen = 3.2f * lineSpacing
+                        val flagCount = when (dur) {
+                            NoteDuration.SIXTEENTH -> 2
+                            NoteDuration.EIGHTH -> 1
+                            else -> 0
+                        }
                         if (stemUp) {
                             val sx = cx + 12.5f
                             canvas.drawLine(sx, noteY - 2f, sx, noteY - stemLen, inkStrokePaint)
-                            if (dur == NoteDuration.EIGHTH) {
+                            for (f in 0 until flagCount) {
+                                val fy = noteY - stemLen + f * 14f
                                 val flag = Path().apply {
-                                    moveTo(sx, noteY - stemLen)
-                                    quadTo(sx + 22f, noteY - stemLen + 14f, sx + 14f, noteY - stemLen + 36f)
+                                    moveTo(sx, fy)
+                                    quadTo(sx + 22f, fy + 13f, sx + 14f, fy + 32f)
                                 }
                                 canvas.drawPath(flag, inkStrokePaint)
                             }
                         } else {
                             val sx = cx - 12.5f
                             canvas.drawLine(sx, noteY + 2f, sx, noteY + stemLen, inkStrokePaint)
-                            if (dur == NoteDuration.EIGHTH) {
+                            for (f in 0 until flagCount) {
+                                val fy = noteY + stemLen - f * 14f
                                 val flag = Path().apply {
-                                    moveTo(sx, noteY + stemLen)
-                                    quadTo(sx + 22f, noteY + stemLen - 14f, sx + 14f, noteY + stemLen - 36f)
+                                    moveTo(sx, fy)
+                                    quadTo(sx + 22f, fy - 13f, sx + 14f, fy - 32f)
                                 }
                                 canvas.drawPath(flag, inkStrokePaint)
                             }

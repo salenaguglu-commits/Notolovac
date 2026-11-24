@@ -25,7 +25,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
@@ -49,9 +51,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.model.MusicTheory
+import com.example.model.NoteDuration
 import com.example.model.NoteLabelMode
 import com.example.ui.components.FullSheetMusicCanvas
 import com.example.ui.components.GlowingPianoKeyboard
+import com.example.ui.components.NoteEditorCard
+import com.example.ui.components.OctaveSelectorRow
 import com.example.ui.theme.CoralContainer
 import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.CreamPaper
@@ -61,6 +66,7 @@ import com.example.ui.theme.LavenderContainer
 import com.example.ui.theme.LavenderMusic
 import com.example.ui.theme.MutedInk
 import com.example.ui.theme.OnLavenderContainer
+import com.example.ui.theme.OnSageMintContainer
 import com.example.ui.theme.SageMintContainer
 import com.example.ui.theme.SageMintSecondary
 import com.example.ui.theme.SoftError
@@ -78,21 +84,35 @@ fun SheetResultScreen(
     onBack: () -> Unit,
     onTitleChange: (String) -> Unit,
     onLabelModeSelected: (NoteLabelMode) -> Unit,
+    onToggleEditMode: () -> Unit,
+    onEnterEditModeForNote: (Int) -> Unit,
     onNoteTapped: (Int) -> Unit,
+    onSelectAdjacentNote: (Int) -> Unit,
+    onPitchStepDown: () -> Unit,
+    onPitchStepUp: () -> Unit,
+    onToggleSharp: () -> Unit,
+    onConvertRestToNote: () -> Unit,
+    onSelectDuration: (NoteDuration) -> Unit,
+    onInsertNoteAfter: () -> Unit,
     onRemoveNote: (Int) -> Unit,
     onTogglePlayback: () -> Unit,
     onSaveSong: () -> Unit,
     onSharePng: () -> Unit,
+    onOctaveChange: (Int) -> Unit,
     onPianoKeyClick: (Int) -> Unit,
+    onAuditionNote: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackHandler { onBack() }
+    BackHandler {
+        if (sheet.isEditMode) onToggleEditMode() else onBack()
+    }
 
     val playingMidi = sheet.playingNoteIndex?.let { idx ->
         sheet.notes.getOrNull(idx)?.takeIf { !it.isRest }?.midiNote
     }
-    val activeKeyMidi = playingMidi ?: keyboardPressedMidi
     val selectedNote = sheet.selectedNoteIndex?.let { sheet.notes.getOrNull(it) }
+    val editSelectedMidi = if (sheet.isEditMode) selectedNote?.takeIf { !it.isRest }?.midiNote else null
+    val activeKeyMidi = playingMidi ?: keyboardPressedMidi ?: editSelectedMidi
     val scrollState = rememberScrollState()
 
     Box(
@@ -166,27 +186,91 @@ fun SheetResultScreen(
                 }
             }
 
-            // 2. Metadata & Label Toggle Strip
+            // 2. Metadata, Edit Mode Toggle & Label Switcher
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 val noteCount = sheet.notes.count { !it.isRest }
-                val keyPart = sheet.detectedKeyName?.let { " • $it" } ?: ""
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = WarmSurface,
                     border = BorderStroke(1.dp, WarmCardBorder)
                 ) {
                     Text(
-                        text = "$noteCount nota • ${sheet.bpm} BPM • ${sheet.beatsPerMeasure}/4$keyPart",
+                        text = "$noteCount nota • ${sheet.bpm} BPM • ${sheet.beatsPerMeasure}/4",
                         style = MaterialTheme.typography.labelSmall,
                         color = MutedInk,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                 }
 
+                // Prominent "Izmeni" / "Gotovo" Edit Mode Button
+                Surface(
+                    onClick = onToggleEditMode,
+                    enabled = sheet.notes.isNotEmpty(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (sheet.isEditMode) SageMintSecondary else HoneyGoldContainer,
+                    border = BorderStroke(
+                        width = 1.5.dp,
+                        color = if (sheet.isEditMode) SageMintSecondary else CoralPrimary
+                    ),
+                    modifier = Modifier
+                        .height(48.dp)
+                        .testTag("toggle_edit_mode_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (sheet.isEditMode) Icons.Filled.Check else Icons.Filled.Edit,
+                            contentDescription = if (sheet.isEditMode) {
+                                stringResource(R.string.action_done_editing)
+                            } else {
+                                stringResource(R.string.action_edit_notes)
+                            },
+                            tint = if (sheet.isEditMode) Color.White else CoralPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = if (sheet.isEditMode) {
+                                stringResource(R.string.action_done_editing)
+                            } else {
+                                stringResource(R.string.action_edit_notes)
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (sheet.isEditMode) Color.White else WarmInk
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                if (sheet.isEditMode) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = SageMintContainer,
+                        border = BorderStroke(1.dp, SageMintSecondary)
+                    ) {
+                        Text(
+                            text = "Režim izmene",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = OnSageMintContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.width(1.dp))
+                }
                 NoteLabelModeRow(
                     selectedMode = labelMode,
                     onSelect = onLabelModeSelected
@@ -197,7 +281,10 @@ fun SheetResultScreen(
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = Color(0xFFFFFDF8),
-                border = BorderStroke(1.5.dp, WarmCardBorder),
+                border = BorderStroke(
+                    width = if (sheet.isEditMode) 2.5.dp else 1.5.dp,
+                    color = if (sheet.isEditMode) CoralPrimary else WarmCardBorder
+                ),
                 shadowElevation = 3.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -210,32 +297,42 @@ fun SheetResultScreen(
                         selectedNoteIndex = sheet.selectedNoteIndex,
                         onNoteTapped = onNoteTapped
                     )
-                    if (sheet.detectedKeyName != null && sheet.harmonicallyRefinedCount > 0) {
-                        val n = sheet.harmonicallyRefinedCount
-                        val noteWord = when {
-                            n == 1 -> "nesigurna nota"
-                            n in 2..4 -> "nesigurne note"
-                            else -> "nesigurnih nota"
-                        }
-                        Text(
-                            text = "Pametna harmonija (${sheet.detectedKeyName}): automatski usklađeno $n $noteWord po lestvici.",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = SageMintSecondary,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-                        )
-                    }
                     Text(
-                        text = "Savet: Dodirni bilo koju notu da je čuješ ili ukloniš ako je slučajan zvuk.",
+                        text = if (sheet.isEditMode) {
+                            "Dodirni notu na linijama, pa joj promeni visinu (strelicama ili dirkom na klavijaturi) i dužinu trajanja."
+                        } else {
+                            "Savet: Pritisni „Izmeni“ ili dodirni bilo koju notu da je čuješ, pomeriš na pravo mesto ili promeniš trajanje."
+                        },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MutedInk,
+                        color = if (sheet.isEditMode) CoralPrimary else MutedInk,
+                        fontWeight = if (sheet.isEditMode) FontWeight.SemiBold else FontWeight.Normal,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            // 4. Contextual Selected Note Inspector Bar (Audition or Remove stray note)
-            AnimatedVisibility(visible = selectedNote != null) {
+            // 4. Full Note Editor Card (in Edit Mode) OR Compact Inspector Bar (in View Mode)
+            AnimatedVisibility(visible = sheet.isEditMode && selectedNote != null) {
+                val selIdx = sheet.selectedNoteIndex ?: return@AnimatedVisibility
+                val sel = selectedNote ?: return@AnimatedVisibility
+                NoteEditorCard(
+                    selectedNote = sel,
+                    selectedIndex = selIdx,
+                    totalCount = sheet.notes.size,
+                    onSelectPrevious = { onSelectAdjacentNote(-1) },
+                    onSelectNext = { onSelectAdjacentNote(1) },
+                    onPitchStepDown = onPitchStepDown,
+                    onPitchStepUp = onPitchStepUp,
+                    onToggleSharp = onToggleSharp,
+                    onConvertRestToNote = onConvertRestToNote,
+                    onSelectDuration = onSelectDuration,
+                    onAuditionNote = { if (!sel.isRest) onAuditionNote(sel.midiNote) },
+                    onInsertNoteAfter = onInsertNoteAfter,
+                    onDeleteNote = { onRemoveNote(selIdx) }
+                )
+            }
+
+            AnimatedVisibility(visible = !sheet.isEditMode && selectedNote != null) {
                 val selIdx = sheet.selectedNoteIndex ?: return@AnimatedVisibility
                 val sel = selectedNote ?: return@AnimatedVisibility
                 Surface(
@@ -268,10 +365,40 @@ fun SheetResultScreen(
                                 color = MutedInk
                             )
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Surface(
+                                onClick = { onEnterEditModeForNote(selIdx) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = CoralPrimary,
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .testTag("quick_edit_selected_note_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Edit,
+                                        contentDescription = "Izmeni ovu notu",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.action_edit_notes),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
                             if (!sel.isRest) {
                                 IconButton(
-                                    onClick = { onPianoKeyClick(sel.midiNote) },
+                                    onClick = { onAuditionNote(sel.midiNote) },
                                     modifier = Modifier.testTag("preview_selected_note_button")
                                 ) {
                                     Icon(
@@ -296,14 +423,34 @@ fun SheetResultScreen(
                 }
             }
 
-            // 5. Synchronized Mini Glowing Keyboard
-            GlowingPianoKeyboard(
-                activeMidiNote = activeKeyMidi,
-                startOctave = keyboardStartOctave,
-                labelMode = labelMode,
-                onKeyClick = onPianoKeyClick,
-                keyboardHeight = 92.dp
-            )
+            // 5. Synchronized Glowing Keyboard (+ Octave Switcher when editing)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (sheet.isEditMode) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Dodirni dirku za novu visinu",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = CoralPrimary
+                        )
+                        OctaveSelectorRow(
+                            startOctave = keyboardStartOctave,
+                            onSelectOctave = onOctaveChange
+                        )
+                    }
+                }
+                GlowingPianoKeyboard(
+                    activeMidiNote = activeKeyMidi,
+                    startOctave = keyboardStartOctave,
+                    labelMode = labelMode,
+                    onKeyClick = onPianoKeyClick,
+                    keyboardHeight = if (sheet.isEditMode) 108.dp else 92.dp
+                )
+            }
 
             // 6. Primary Playback & Save/Share Actions
             Button(

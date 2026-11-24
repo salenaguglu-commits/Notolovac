@@ -28,7 +28,7 @@ data class ScaleCalibrationSnapshot(
     val silenceProgress: Float = 0f,
     val currentNoteIndex: Int = 0,
     val currentNoteLockedSamples: Int = 0,
-    val requiredSamplesPerNote: Int = 10,
+    val requiredSamplesPerNote: Int = 24,
     val completedNotes: List<ScaleNoteMeasurement> = emptyList(),
     val heardNoteName: String? = null,
     val heardRawHz: Double = 0.0,
@@ -65,8 +65,8 @@ data class ScaleCalibrationSnapshot(
  * Step 3: Computes a personalized [PianoCalibrationProfile] for [PianoPitchEngine] and [PianoNoteTracker].
  */
 class ScaleCalibrationEngine(
-    private val silenceTargetFrames: Int = 42,
-    private val requiredSamplesPerNote: Int = 13
+    private val silenceTargetFrames: Int = 85,
+    private val requiredSamplesPerNote: Int = 24
 ) {
     private var phase: ScaleCalibrationPhase = ScaleCalibrationPhase.IDLE
 

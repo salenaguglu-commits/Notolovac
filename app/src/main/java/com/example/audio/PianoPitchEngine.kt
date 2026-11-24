@@ -22,7 +22,6 @@ data class SpectralPitchFrame(
     val isOnset: Boolean,         // True when a genuine piano hammer attack occurred
     val activeNoteEnergy: Float,  // Harmonic energy of winning full-spectrum note
     val clippingRatio: Float = 0f,// Fraction of samples near full-scale mic saturation (close-up overload)
-    val topCandidates: List<PitchCandidate> = emptyList(),
     private val keyEnergies: FloatArray = FloatArray(0),
     private val keyDeltaRatios: FloatArray = FloatArray(0)
 ) {
@@ -51,7 +50,7 @@ data class SpectralPitchFrame(
  */
 class PianoPitchEngine(
     private val sampleRate: Int = 44100,
-    private val windowSize: Int = 4096,
+    private val windowSize: Int = 2048,
     private var calibrationCents: Float = 0f,
     private val widePitchTolerance: Boolean = false,
     private val calibrationProfile: PianoCalibrationProfile? = null
@@ -203,7 +202,8 @@ class PianoPitchEngine(
             magCount++
 
             if (hasPrevSpectrum) {
-                val diff = m - prevMag[k] * 0.92f
+                val prevDecay = if (windowSize <= 2048) 0.94f else 0.92f
+                val diff = m - prevMag[k] * prevDecay
                 if (diff > 0f) {
                     deltaMag[k] = diff
                     deltaSum += diff
@@ -222,15 +222,20 @@ class PianoPitchEngine(
         val meanFloor = if (magCount > 0) magSum / magCount else 0.0001f
         val meanDeltaFloor = if (magCount > 0) deltaSum / magCount else 0.0001f
 
-        // 4. Adaptive Onset Detection
+        // 4. Adaptive Onset Detection (calibrated for fast 11.6ms or 23.2ms hops)
         var avgFlux = 0f
         for (v in fluxHistory) avgFlux += v
         avgFlux /= fluxHistory.size
 
-        val rmsJump = prevRms > 0.0005f && rms > prevRms * 1.52f && rms > 0.006f
+        val rmsJumpFactor = if (windowSize <= 2048) 1.35f else 1.52f
+        val minFluxFloor = if (windowSize <= 2048) 10.5f else 15f
+        val fluxMult = if (windowSize <= 2048) 2.15f else 2.35f
+        val fluxBias = if (windowSize <= 2048) 6.0f else 8.0f
+
+        val rmsJump = prevRms > 0.0005f && rms > prevRms * rmsJumpFactor && rms > 0.0055f
         val fluxSpike = hasPrevSpectrum &&
-            rawFlux > max(15f, avgFlux * 2.35f + 8f) &&
-            rms > 0.0055f
+            rawFlux > max(minFluxFloor, avgFlux * fluxMult + fluxBias) &&
+            rms > 0.0050f
         val isOnset = fluxSpike || rmsJump
 
         fluxHistory[fluxIndex] = rawFlux
@@ -268,7 +273,7 @@ class PianoPitchEngine(
             System.arraycopy(keyEnergies, 0, deltaKeyEnergies, 0, numCandidates)
             fullResult
         } else {
-            ScoreResult(null, 0f, 0f, emptyList())
+            ScoreResult(null, 0f, 0f)
         }
 
         for (i in 0 until numCandidates) {
@@ -297,8 +302,7 @@ class PianoPitchEngine(
             0f
         }
 
-        // Gently temper confidence during clipping (never dropping strong strikes below the onset gate!),
-        // while exposing exact clippingRatio so tracker & MusicalHarmonyResolver refine clipped attacks.
+        // Gently temper confidence during hard mic clipping without dropping valid strikes
         val clipConfidenceFactor = (1f - clippingRatio * 0.65f).coerceIn(0.65f, 1f)
 
         return SpectralPitchFrame(
@@ -313,7 +317,6 @@ class PianoPitchEngine(
             isOnset = isOnset,
             activeNoteEnergy = winEnergy,
             clippingRatio = clippingRatio,
-            topCandidates = fullResult.topCandidates,
             keyEnergies = keyEnergies,
             keyDeltaRatios = keyDeltaRatios
         )
@@ -322,8 +325,7 @@ class PianoPitchEngine(
     private data class ScoreResult(
         val midi: Int?,
         val score: Float,
-        val confidence: Float,
-        val topCandidates: List<PitchCandidate>
+        val confidence: Float
     )
 
     private fun scoreSpectrum(
@@ -335,7 +337,7 @@ class PianoPitchEngine(
         isClipped: Boolean,
         outKeyEnergies: FloatArray?
     ): ScoreResult {
-        if (maxPeak < 0.25f) return ScoreResult(null, 0f, 0f, emptyList())
+        if (maxPeak < 0.25f) return ScoreResult(null, 0f, 0f)
 
         // During hard mic clipping, odd/high distortion products (3f, 5f, IMD) spike artificially;
         // down-weight h4 & h5 and rely more heavily on fundamental + 2nd harmonic!
@@ -349,7 +351,6 @@ class PianoPitchEngine(
         var bestMidi: Int? = null
         var bestScore = 0f
         var secondBestScore = 0f
-        val scoredList = ArrayList<PitchCandidate>(8)
 
         for (idx in 0 until numCandidates) {
             val midi = minMidi + idx
@@ -422,10 +423,6 @@ class PianoPitchEngine(
                 totalScore *= 0.50f
             }
 
-            if (totalScore >= 0.85f) {
-                scoredList.add(PitchCandidate(midi, totalScore))
-            }
-
             if (totalScore > bestScore) {
                 secondBestScore = bestScore
                 bestScore = totalScore
@@ -436,15 +433,14 @@ class PianoPitchEngine(
         }
 
         if (bestMidi == null || bestScore < 1.35f) {
-            return ScoreResult(null, 0f, 0f, emptyList())
+            return ScoreResult(null, 0f, 0f)
         }
 
         val margin = ((bestScore - secondBestScore) / bestScore).coerceIn(0f, 1f)
         val strength = (bestScore / 4.2f).coerceIn(0f, 1f)
         val confidence = (0.55f * strength + 0.45f * max(margin, 0.25f)).coerceIn(0f, 1f)
-        val top5 = scoredList.sortedByDescending { it.score }.take(5)
 
-        return ScoreResult(bestMidi, bestScore, confidence, top5)
+        return ScoreResult(bestMidi, bestScore, confidence)
     }
 
     private fun refineFundamentalHz(midi: Int, minBin: Int, maxBin: Int): Double {
@@ -499,10 +495,12 @@ class PianoPitchEngine(
         minBin: Int,
         maxBin: Int
     ): Float {
-        val leftStart = max(minBin, loBin - 7)
-        val leftEnd = max(minBin, loBin - 2)
-        val rightStart = minOf(maxBin, hiBin + 2)
-        val rightEnd = minOf(maxBin, hiBin + 7)
+        // Wider skirt padding for 2048-sample Hann main lobe so SNR stays crisp
+        val skirtPad = if (windowSize <= 2048) 4 else 2
+        val leftStart = max(minBin, loBin - skirtPad - 5)
+        val leftEnd = max(minBin, loBin - skirtPad)
+        val rightStart = minOf(maxBin, hiBin + skirtPad)
+        val rightEnd = minOf(maxBin, hiBin + skirtPad + 5)
         var sum = 0f
         var count = 0
         for (k in leftStart..leftEnd) {

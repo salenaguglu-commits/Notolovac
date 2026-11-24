@@ -19,12 +19,12 @@ data class AudioPitchFrame(
 
 /**
  * Captures real-time mono 16-bit PCM audio from the device microphone using standard AudioSource.MIC
- * with a 4096-sample Hann analysis window (~93ms) and 1024-sample hop (~23ms update rate),
- * feeding directly into the 8192-point FFT PianoPitchEngine.
+ * with a fast 2048-sample Hann analysis window (~46ms) and 512-sample hop (~11.6ms update rate),
+ * feeding directly into the 8192-point zero-padded FFT PianoPitchEngine for crisp 1/8 and 1/16 notes.
  */
 class AudioCaptureEngine(
-    private val frameSize: Int = 4096,
-    private val hopSize: Int = 1024
+    private val frameSize: Int = 2048,
+    private val hopSize: Int = 512
 ) {
     @SuppressLint("MissingPermission")
     fun pitchFramesFlow(
