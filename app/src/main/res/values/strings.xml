@@ -37,6 +37,8 @@
     <string name="studio_empty_staff_hint">Tap “Listen Now” and play a melody on your piano, or try the keys below!</string>
     <string name="studio_keyboard_title">Glowing Keyboard</string>
     <string name="keyboard_octave_range">Key range:</string>
+    <string name="keyboard_octave_down_desc">Lower keyboard octave</string>
+    <string name="keyboard_octave_up_desc">Higher keyboard octave</string>
     <string name="landscape_clear_staff_desc">Clear notes from staff</string>
 
     <!-- Metronome -->

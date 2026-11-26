@@ -37,6 +37,8 @@
     <string name="studio_empty_staff_hint">Притисни „Слушај сада“ и одсвирај мелодију на клавиру, или испробај дирке испод!</string>
     <string name="studio_keyboard_title">Светлећа клавијатура</string>
     <string name="keyboard_octave_range">Опсег дирки:</string>
+    <string name="keyboard_octave_down_desc">Нижа октава клавијатуре</string>
+    <string name="keyboard_octave_up_desc">Виша октава клавијатуре</string>
     <string name="landscape_clear_staff_desc">Очисти ноте са линија</string>
 
     <!-- Metronome -->

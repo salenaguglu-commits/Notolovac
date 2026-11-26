@@ -314,7 +314,8 @@ fun FullSheetMusicCanvas(
                         }
                         drawRestSymbol(cx, staffTop, lineSpacing, note.beats >= 2f)
                     } else {
-                        val step = MusicTheory.midiToStaffStep(note.midiNote)
+                        val (displayMidi, _) = MusicTheory.staffDisplayMidi(note.midiNote)
+                        val step = MusicTheory.midiToStaffStep(displayMidi)
                         val noteY = staffBottom - (step - 2) * halfStep
                         hitTargets.add(DrawnNoteTarget(globalIdx, Offset(cx, noteY)))
                         drawSingleNote(
@@ -384,7 +385,8 @@ fun MiniSheetPreview(
         if (previewNotes.isEmpty()) return@Canvas
         val stepX = (size.width - leftPad - rightPad - 20.dp.toPx()) / maxOf(previewNotes.size, 6)
         previewNotes.forEachIndexed { i, n ->
-            val step = MusicTheory.midiToStaffStep(n.midiNote).coerceIn(-2, 12)
+            val (displayMidi, _) = MusicTheory.staffDisplayMidi(n.midiNote)
+            val step = MusicTheory.midiToStaffStep(displayMidi).coerceIn(-2, 12)
             val cx = leftPad + 16.dp.toPx() + i * stepX
             val cy = (staffBottom - (step - 2) * halfStep).coerceIn(6.dp.toPx(), size.height - 6.dp.toPx())
             val color = NotePastelColors[MusicTheory.diatonicColorIndex(n.midiNote) % NotePastelColors.size]
@@ -411,7 +413,8 @@ private fun DrawScope.drawSingleNote(
     highlightColor: Color?,
     usePastelAccent: Boolean
 ) {
-    val step = MusicTheory.midiToStaffStep(midiNote)
+    val (displayMidi, octaveMarker) = MusicTheory.staffDisplayMidi(midiNote)
+    val step = MusicTheory.midiToStaffStep(displayMidi)
     val noteY = staffBottom - (step - 2) * halfStep
 
     val noteColor = when {
@@ -575,6 +578,36 @@ private fun DrawScope.drawSingleNote(
                 )
             }
         }
+    }
+
+    // Standard 8va / 8vb octave shift indicator for extended keyboard ranges (C2..B2 & C#6..C7)
+    if (octaveMarker != null) {
+        val markerLayout = textMeasurer.measure(
+            text = octaveMarker,
+            style = TextStyle(
+                fontFamily = FredokaFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = LavenderMusic
+            )
+        )
+        val staffTop = staffBottom - 4f * lineSpacing
+        val markerTopLeft = if (octaveMarker == "8va") {
+            Offset(
+                x = cx - markerLayout.size.width / 2f,
+                y = (noteY - 19.dp.toPx()).coerceAtLeast(staffTop - 36.dp.toPx())
+            )
+        } else {
+            Offset(
+                x = cx + 9.dp.toPx(),
+                y = (noteY - markerLayout.size.height / 2f + 2.dp.toPx())
+                    .coerceAtMost(staffBottom + 50.dp.toPx())
+            )
+        }
+        drawText(
+            textLayoutResult = markerLayout,
+            topLeft = markerTopLeft
+        )
     }
 
     // Do-Re-Mi or C-D-E note name below the staff

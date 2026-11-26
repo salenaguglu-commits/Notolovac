@@ -33,6 +33,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -380,21 +382,15 @@ fun StudioScreen(
 
             // 4. Interactive Glowing Piano Keyboard
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.studio_keyboard_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = WarmInk
-                    )
-                    OctaveSelectorRow(
-                        startOctave = uiState.keyboardStartOctave,
-                        onSelectOctave = onOctaveChange
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.studio_keyboard_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = WarmInk
+                )
+                OctaveSelectorRow(
+                    startOctave = uiState.keyboardStartOctave,
+                    onSelectOctave = onOctaveChange
+                )
 
                 GlowingPianoKeyboard(
                     activeMidiNote = activeKeyMidi,
@@ -557,28 +553,60 @@ private fun LandscapePianoStage(
                         }
                     }
 
-                    val nextOctave = if (uiState.keyboardStartOctave == 4) 3 else 4
-                    val octaveLabel = if (uiState.keyboardStartOctave == 4) "C4–C6" else "C3–C5"
+                    val curOctave = uiState.keyboardStartOctave.coerceIn(
+                        MusicTheory.MIN_KEYBOARD_START_OCTAVE,
+                        MusicTheory.MAX_KEYBOARD_START_OCTAVE
+                    )
+                    val octaveLabel = "C$curOctave–C${curOctave + 2}"
+                    val canShiftDown = curOctave > MusicTheory.MIN_KEYBOARD_START_OCTAVE
+                    val canShiftUp = curOctave < MusicTheory.MAX_KEYBOARD_START_OCTAVE
                     Surface(
-                        onClick = { onOctaveChange(nextOctave) },
                         shape = RoundedCornerShape(10.dp),
-                        color = HoneyGoldContainer.copy(alpha = 0.92f),
+                        color = HoneyGoldContainer.copy(alpha = 0.94f),
                         border = BorderStroke(1.dp, HoneyGoldTertiary),
                         modifier = Modifier
                             .height(48.dp)
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 6.dp)
                             .testTag("landscape_octave_toggle")
                     ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 10.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            IconButton(
+                                onClick = { onOctaveChange(curOctave - 1) },
+                                enabled = canShiftDown,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("landscape_octave_down_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                    contentDescription = stringResource(R.string.keyboard_octave_down_desc),
+                                    tint = if (canShiftDown) WarmInk else MutedInk.copy(alpha = 0.35f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                             Text(
                                 text = octaveLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = WarmInk
+                                color = WarmInk,
+                                maxLines = 1
                             )
+                            IconButton(
+                                onClick = { onOctaveChange(curOctave + 1) },
+                                enabled = canShiftUp,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("landscape_octave_up_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = stringResource(R.string.keyboard_octave_up_desc),
+                                    tint = if (canShiftUp) WarmInk else MutedInk.copy(alpha = 0.35f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
 

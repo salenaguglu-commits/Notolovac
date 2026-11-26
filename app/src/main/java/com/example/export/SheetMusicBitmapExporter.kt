@@ -162,6 +162,12 @@ object SheetMusicBitmapExporter {
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             textAlign = Paint.Align.RIGHT
         }
+        val octaveShiftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#8378D4")
+            textSize = 20f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
 
         val leftMargin = 76f
         val rightMargin = width - 76f
@@ -233,7 +239,8 @@ object SheetMusicBitmapExporter {
                         canvas.drawPath(restPath, inkStrokePaint)
                     }
                 } else {
-                    val step = MusicTheory.midiToStaffStep(note.midiNote)
+                    val (displayMidi, octaveMarker) = MusicTheory.staffDisplayMidi(note.midiNote)
+                    val step = MusicTheory.midiToStaffStep(displayMidi)
                     // E4 is step 2 -> bottom line (staffBottom)
                     val noteY = staffBottom - (step - 2) * halfStep
 
@@ -306,6 +313,25 @@ object SheetMusicBitmapExporter {
                                 }
                                 canvas.drawPath(flag, inkStrokePaint)
                             }
+                        }
+                    }
+
+                    // Standard 8va / 8vb octave shift indicator
+                    if (octaveMarker != null) {
+                        if (octaveMarker == "8va") {
+                            canvas.drawText(
+                                octaveMarker,
+                                cx,
+                                (noteY - 22f).coerceAtLeast(staffTop - 32f),
+                                octaveShiftPaint
+                            )
+                        } else {
+                            canvas.drawText(
+                                octaveMarker,
+                                cx + 30f,
+                                noteY + 8f,
+                                octaveShiftPaint
+                            )
                         }
                     }
 

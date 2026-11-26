@@ -51,8 +51,14 @@ data class DetectedNote(
 object MusicTheory {
     const val STANDARD_A4_HZ = 440.0
     const val STANDARD_C4_HZ = 261.625565
+    // Acoustic microphone pitch detection range: C3 (48) .. C6 (84)
     const val MIN_PIANO_MIDI = 48 // C3
     const val MAX_PIANO_MIDI = 84 // C6
+    // Interactive touch keyboard & note editor range: C2 (36) .. C7 (96)
+    const val MIN_KEYBOARD_START_OCTAVE = 2 // C2 – C4
+    const val MAX_KEYBOARD_START_OCTAVE = 5 // C5 – C7
+    const val MIN_KEYBOARD_MIDI = 36 // C2
+    const val MAX_KEYBOARD_MIDI = 96 // C7
 
     private val SOLFEGE_NAMES = arrayOf(
         "Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"
@@ -154,6 +160,16 @@ object MusicTheory {
         val semitone = ((midi % 12) + 12) % 12
         val diatonicInOctave = SEMITONE_TO_DIATONIC[semitone]
         return (octave - 4) * 7 + diatonicInOctave
+    }
+
+    /**
+     * Maps extreme treble-staff keyboard notes (below C3 or above C6) into clean, readable
+     * treble staff positions paired with standard octave shift markers ("8vb" / "8va").
+     */
+    fun staffDisplayMidi(midi: Int): Pair<Int, String?> = when {
+        midi > MAX_PIANO_MIDI -> (midi - 12) to "8va"
+        midi < MIN_PIANO_MIDI -> (midi + 12) to "8vb"
+        else -> midi to null
     }
 
     fun diatonicColorIndex(midi: Int): Int {

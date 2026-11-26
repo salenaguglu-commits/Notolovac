@@ -37,6 +37,8 @@
     <string name="studio_empty_staff_hint">Pritisni „Slušaj sada“ i odsviraj melodiju na klaviru, ili isprobaj dirke ispod!</string>
     <string name="studio_keyboard_title">Svetleća klavijatura</string>
     <string name="keyboard_octave_range">Opseg dirki:</string>
+    <string name="keyboard_octave_down_desc">Niža oktava klavijature</string>
+    <string name="keyboard_octave_up_desc">Viša oktava klavijature</string>
     <string name="landscape_clear_staff_desc">Očisti note sa linija</string>
 
     <!-- Metronome -->

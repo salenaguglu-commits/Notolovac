@@ -39,9 +39,9 @@ class SheetNoteEditorTest {
         assertEquals(67, SheetNoteEditor.stepDiatonic(66, +1))
         assertEquals(65, SheetNoteEditor.stepDiatonic(66, -1))
 
-        // Clamps safely at piano range bounds (C3=48 .. C6=84)
-        assertEquals(MusicTheory.MIN_PIANO_MIDI, SheetNoteEditor.stepDiatonic(MusicTheory.MIN_PIANO_MIDI, -1))
-        assertEquals(MusicTheory.MAX_PIANO_MIDI, SheetNoteEditor.stepDiatonic(MusicTheory.MAX_PIANO_MIDI, +1))
+        // Clamps safely at extended keyboard range bounds (C2=36 .. C7=96)
+        assertEquals(MusicTheory.MIN_KEYBOARD_MIDI, SheetNoteEditor.stepDiatonic(MusicTheory.MIN_KEYBOARD_MIDI, -1))
+        assertEquals(MusicTheory.MAX_KEYBOARD_MIDI, SheetNoteEditor.stepDiatonic(MusicTheory.MAX_KEYBOARD_MIDI, +1))
     }
 
     @Test
@@ -147,5 +147,19 @@ class SheetNoteEditorTest {
         val (cleared, sel) = SheetNoteEditor.clearAllNotes()
         assertTrue(cleared.isEmpty())
         assertNull(sel)
+    }
+
+    @Test
+    fun extendedKeyboardRangesMapCleanlyWith8vbAnd8vaMarkers() {
+        // C2 (36) -> rendered at C3 (48) with 8vb
+        assertEquals(48 to "8vb", MusicTheory.staffDisplayMidi(36))
+        assertEquals(59 to "8vb", MusicTheory.staffDisplayMidi(47))
+        // Core C3..C6 (48..84) -> rendered as-is with no marker
+        assertEquals(48 to null, MusicTheory.staffDisplayMidi(48))
+        assertEquals(60 to null, MusicTheory.staffDisplayMidi(60))
+        assertEquals(84 to null, MusicTheory.staffDisplayMidi(84))
+        // C#6..C7 (85..96) -> rendered one octave down with 8va
+        assertEquals(73 to "8va", MusicTheory.staffDisplayMidi(85))
+        assertEquals(84 to "8va", MusicTheory.staffDisplayMidi(96))
     }
 }

@@ -197,7 +197,7 @@ fun NoteEditorCard(
             ) {
                 Button(
                     onClick = onPitchStepDown,
-                    enabled = selectedNote.midiNote > MusicTheory.MIN_PIANO_MIDI,
+                    enabled = selectedNote.midiNote > MusicTheory.MIN_KEYBOARD_MIDI,
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = WarmSurface,
@@ -258,7 +258,7 @@ fun NoteEditorCard(
 
                 Button(
                     onClick = onPitchStepUp,
-                    enabled = selectedNote.midiNote < MusicTheory.MAX_PIANO_MIDI,
+                    enabled = selectedNote.midiNote < MusicTheory.MAX_KEYBOARD_MIDI,
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = WarmSurface,

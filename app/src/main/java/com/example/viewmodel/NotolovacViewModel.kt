@@ -119,7 +119,7 @@ data class NotolovacUiState(
     val keyboardPressedMidi: Int? = null,
     val keyboardActiveNotes: Set<Int> = emptySet(),
     val keyboardPlayedHistory: List<DetectedNote> = emptyList(),
-    val keyboardStartOctave: Int = 4, // 3 (C3..B4) or 4 (C4..B5)
+    val keyboardStartOctave: Int = 4, // 2 (C2..C4), 3 (C3..C5), 4 (C4..C6), 5 (C5..C7)
     val metronomeRunning: Boolean = false,
     val currentBeatIndex: Int = -1,
     val tuneDialog: TuneDialogState = TuneDialogState(),
@@ -239,7 +239,14 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun setKeyboardOctave(octave: Int) {
-        _uiState.update { it.copy(keyboardStartOctave = octave.coerceIn(3, 4)) }
+        _uiState.update {
+            it.copy(
+                keyboardStartOctave = octave.coerceIn(
+                    MusicTheory.MIN_KEYBOARD_START_OCTAVE,
+                    MusicTheory.MAX_KEYBOARD_START_OCTAVE
+                )
+            )
+        }
     }
 
     fun onPianoKeyTapped(midiNote: Int) {
@@ -1122,7 +1129,7 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         val idx = sheet.selectedNoteIndex ?: return
         if (idx !in sheet.notes.indices) return
         stopPlayback()
-        val clamped = newMidi.coerceIn(MusicTheory.MIN_PIANO_MIDI, MusicTheory.MAX_PIANO_MIDI)
+        val clamped = newMidi.coerceIn(MusicTheory.MIN_KEYBOARD_MIDI, MusicTheory.MAX_KEYBOARD_MIDI)
         val updated = SheetNoteEditor.updatePitch(sheet.notes, idx, clamped)
         _uiState.update { state ->
             state.copy(
@@ -1206,8 +1213,14 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         val lowVisible = (currentStartOctave + 1) * 12
         val highVisible = lowVisible + 24
         return when {
-            midi < lowVisible -> 3
-            midi > highVisible -> 4
+            midi < lowVisible -> ((midi / 12) - 1).coerceIn(
+                MusicTheory.MIN_KEYBOARD_START_OCTAVE,
+                MusicTheory.MAX_KEYBOARD_START_OCTAVE
+            )
+            midi > highVisible -> (((midi + 11) / 12) - 3).coerceIn(
+                MusicTheory.MIN_KEYBOARD_START_OCTAVE,
+                MusicTheory.MAX_KEYBOARD_START_OCTAVE
+            )
             else -> currentStartOctave
         }
     }

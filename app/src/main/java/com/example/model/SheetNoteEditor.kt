@@ -17,8 +17,8 @@ object SheetNoteEditor {
      * - From a sharp note (e.g. C#4=61): +1 -> D4(62), -1 -> C4(60).
      */
     fun stepDiatonic(midi: Int, direction: Int): Int {
-        if (direction == 0) return midi.coerceIn(MusicTheory.MIN_PIANO_MIDI, MusicTheory.MAX_PIANO_MIDI)
-        val clamped = midi.coerceIn(MusicTheory.MIN_PIANO_MIDI, MusicTheory.MAX_PIANO_MIDI)
+        if (direction == 0) return midi.coerceIn(MusicTheory.MIN_KEYBOARD_MIDI, MusicTheory.MAX_KEYBOARD_MIDI)
+        val clamped = midi.coerceIn(MusicTheory.MIN_KEYBOARD_MIDI, MusicTheory.MAX_KEYBOARD_MIDI)
         val octave = clamped / 12
         val semi = clamped % 12
 
@@ -29,7 +29,7 @@ object SheetNoteEditor {
             } else {
                 (octave + 1) * 12 // C of next octave
             }
-            return candidate.coerceAtMost(MusicTheory.MAX_PIANO_MIDI)
+            return candidate.coerceAtMost(MusicTheory.MAX_KEYBOARD_MIDI)
         } else {
             val prevInOctave = DIATONIC_NATURAL_OFFSETS.lastOrNull { it < semi }
             val candidate = if (prevInOctave != null) {
@@ -37,31 +37,31 @@ object SheetNoteEditor {
             } else {
                 (octave - 1) * 12 + 11 // B of previous octave
             }
-            return candidate.coerceAtLeast(MusicTheory.MIN_PIANO_MIDI)
+            return candidate.coerceAtLeast(MusicTheory.MIN_KEYBOARD_MIDI)
         }
     }
 
     /**
      * Returns true if this MIDI note can toggle a sharp (#) cleanly (all notes except E and B,
-     * which have no black key immediately above them, and top C6).
+     * which have no black key immediately above them, and top C7).
      */
     fun canToggleSharp(midi: Int): Boolean {
-        if (midi !in MusicTheory.MIN_PIANO_MIDI..MusicTheory.MAX_PIANO_MIDI) return false
+        if (midi !in MusicTheory.MIN_KEYBOARD_MIDI..MusicTheory.MAX_KEYBOARD_MIDI) return false
         val semi = ((midi % 12) + 12) % 12
         if (MusicTheory.isSharp(midi)) return true
-        // Natural E (4) and B (11) have no sharp black key above; C6 (84) is max range
-        return semi != 4 && semi != 11 && midi < MusicTheory.MAX_PIANO_MIDI
+        // Natural E (4) and B (11) have no sharp black key above; C7 (96) is max range
+        return semi != 4 && semi != 11 && midi < MusicTheory.MAX_KEYBOARD_MIDI
     }
 
     /**
      * Toggles sharp on a note: C4 <-> C#4, F4 <-> F#4, etc.
      */
     fun toggleSharp(midi: Int): Int {
-        if (!canToggleSharp(midi)) return midi.coerceIn(MusicTheory.MIN_PIANO_MIDI, MusicTheory.MAX_PIANO_MIDI)
+        if (!canToggleSharp(midi)) return midi.coerceIn(MusicTheory.MIN_KEYBOARD_MIDI, MusicTheory.MAX_KEYBOARD_MIDI)
         return if (MusicTheory.isSharp(midi)) {
-            (midi - 1).coerceAtLeast(MusicTheory.MIN_PIANO_MIDI)
+            (midi - 1).coerceAtLeast(MusicTheory.MIN_KEYBOARD_MIDI)
         } else {
-            (midi + 1).coerceAtMost(MusicTheory.MAX_PIANO_MIDI)
+            (midi + 1).coerceAtMost(MusicTheory.MAX_KEYBOARD_MIDI)
         }
     }
 
@@ -71,7 +71,7 @@ object SheetNoteEditor {
         newMidi: Int
     ): List<DetectedNote> {
         if (index !in notes.indices) return notes
-        val clamped = newMidi.coerceIn(MusicTheory.MIN_PIANO_MIDI, MusicTheory.MAX_PIANO_MIDI)
+        val clamped = newMidi.coerceIn(MusicTheory.MIN_KEYBOARD_MIDI, MusicTheory.MAX_KEYBOARD_MIDI)
         return notes.mapIndexed { i, note ->
             if (i == index) {
                 note.copy(

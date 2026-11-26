@@ -359,33 +359,51 @@ fun GlowingPianoKeyboard(
 fun OctaveSelectorRow(
     startOctave: Int,
     onSelectOctave: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showLabel: Boolean = false
 ) {
+    val ranges = listOf(
+        2 to "C2–C4",
+        3 to "C3–C5",
+        4 to "C4–C6",
+        5 to "C5–C7"
+    )
     Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = stringResource(R.string.keyboard_octave_range),
-            style = MaterialTheme.typography.bodySmall,
-            color = MutedInk
-        )
-        listOf(3 to "C3 – C5", 4 to "C4 – C6").forEach { (oct, label) ->
+        if (showLabel) {
+            Text(
+                text = stringResource(R.string.keyboard_octave_range),
+                style = MaterialTheme.typography.bodySmall,
+                color = MutedInk
+            )
+        }
+        ranges.forEach { (oct, label) ->
             val selected = startOctave == oct
             Surface(
                 onClick = { onSelectOctave(oct) },
                 shape = RoundedCornerShape(10.dp),
                 color = if (selected) HoneyGoldContainer else WarmSurface,
-                border = BorderStroke(1.dp, if (selected) HoneyGoldTertiary else WarmCardBorder),
-                modifier = Modifier.testTag("octave_btn_$oct")
+                border = BorderStroke(
+                    width = if (selected) 1.5.dp else 1.dp,
+                    color = if (selected) HoneyGoldTertiary else WarmCardBorder
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .testTag("octave_btn_$oct")
             ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = WarmInk,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (selected) WarmInk else MutedInk,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }

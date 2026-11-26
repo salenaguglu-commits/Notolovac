@@ -750,22 +750,16 @@ fun SheetResultScreen(
 
                         AnimatedVisibility(visible = showEditKeyboard) {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = stringResource(R.string.edit_tap_key_hint),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = CoralPrimary
-                                    )
-                                    OctaveSelectorRow(
-                                        startOctave = keyboardStartOctave,
-                                        onSelectOctave = onOctaveChange
-                                    )
-                                }
+                                Text(
+                                    text = stringResource(R.string.edit_tap_key_hint),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CoralPrimary
+                                )
+                                OctaveSelectorRow(
+                                    startOctave = keyboardStartOctave,
+                                    onSelectOctave = onOctaveChange
+                                )
                                 GlowingPianoKeyboard(
                                     activeMidiNote = activeKeyMidi,
                                     startOctave = keyboardStartOctave,
