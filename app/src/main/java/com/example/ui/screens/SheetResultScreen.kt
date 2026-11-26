@@ -28,14 +28,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -47,6 +52,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,14 +73,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.audio.MetronomeEngine
 import com.example.model.MusicTheory
 import com.example.model.NoteDuration
 import com.example.model.NoteLabelMode
+import com.example.model.SheetNoteEditor
 import com.example.ui.components.FullSheetMusicCanvas
 import com.example.ui.components.GlowingPianoKeyboard
 import com.example.ui.components.NoteEditorCard
 import com.example.ui.components.OctaveSelectorRow
 import com.example.ui.components.localizedName
+import com.example.ui.theme.CoralContainer
 import com.example.ui.theme.CoralPrimary
 import com.example.ui.theme.CreamPaper
 import com.example.ui.theme.HoneyGoldContainer
@@ -82,11 +91,13 @@ import com.example.ui.theme.HoneyGoldTertiary
 import com.example.ui.theme.LavenderContainer
 import com.example.ui.theme.LavenderMusic
 import com.example.ui.theme.MutedInk
+import com.example.ui.theme.OnCoralContainer
 import com.example.ui.theme.OnLavenderContainer
 import com.example.ui.theme.OnSageMintContainer
 import com.example.ui.theme.SageMintContainer
 import com.example.ui.theme.SageMintSecondary
 import com.example.ui.theme.SoftError
+import com.example.ui.theme.WarmCard
 import com.example.ui.theme.WarmCardBorder
 import com.example.ui.theme.WarmInk
 import com.example.ui.theme.WarmSurface
@@ -112,7 +123,10 @@ fun SheetResultScreen(
     onSelectDuration: (NoteDuration) -> Unit,
     onInsertNoteAfter: () -> Unit,
     onRemoveNote: (Int) -> Unit,
+    onClearAllNotes: () -> Unit = {},
+    onAdjustBpm: (Int) -> Unit = {},
     onTogglePlayback: () -> Unit,
+    onTogglePlaybackFromSelected: () -> Unit = onTogglePlayback,
     onSaveSong: () -> Unit,
     onSharePng: () -> Unit,
     onOctaveChange: (Int) -> Unit,
@@ -133,6 +147,7 @@ fun SheetResultScreen(
     val activeKeyMidi = playingMidi ?: keyboardPressedMidi ?: editSelectedMidi
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = modifier
@@ -202,10 +217,88 @@ fun SheetResultScreen(
                                 )
                             }
 
+                            Surface(
+                                onClick = { showClearConfirmDialog = true },
+                                enabled = sheet.notes.isNotEmpty(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = CoralContainer.copy(alpha = 0.72f),
+                                border = BorderStroke(1.dp, SoftError.copy(alpha = 0.55f)),
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("edit_clear_sheet_button")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DeleteSweep,
+                                        contentDescription = stringResource(R.string.action_clear_sheet_desc),
+                                        tint = SoftError,
+                                        modifier = Modifier.size(21.dp)
+                                    )
+                                }
+                            }
+
                             EditModeToggleButton(
                                 isEditMode = true,
                                 enabled = sheet.notes.isNotEmpty(),
                                 onClick = onToggleEditMode
+                            )
+                        }
+                        HorizontalDivider(color = WarmCardBorder.copy(alpha = 0.55f))
+
+                        // Pinned Edit Mode Playback ("Od #N") + Live Tempo (+/- BPM) Strip
+                        val playFromNumber = (sheet.selectedNoteIndex ?: 0) + 1
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(WarmSurface.copy(alpha = 0.72f))
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Surface(
+                                onClick = onTogglePlaybackFromSelected,
+                                enabled = sheet.notes.isNotEmpty(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (sheet.isPlaying) CoralPrimary else SageMintSecondary,
+                                shadowElevation = 2.dp,
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .testTag("edit_play_from_note_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (sheet.isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                                        contentDescription = if (sheet.isPlaying) {
+                                            stringResource(R.string.action_stop_playback)
+                                        } else {
+                                            stringResource(R.string.action_play_from_note_desc, playFromNumber)
+                                        },
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Text(
+                                        text = if (sheet.isPlaying) {
+                                            stringResource(R.string.action_stop_playback)
+                                        } else {
+                                            stringResource(R.string.action_play_from_note, playFromNumber)
+                                        },
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+
+                            PlaybackTempoStepper(
+                                bpm = sheet.bpm,
+                                onDecrease = { onAdjustBpm(-SheetNoteEditor.TEMPO_STEP_BPM) },
+                                onIncrease = { onAdjustBpm(SheetNoteEditor.TEMPO_STEP_BPM) },
+                                compact = true
                             )
                         }
                         HorizontalDivider(color = WarmCardBorder.copy(alpha = 0.6f))
@@ -257,9 +350,13 @@ fun SheetResultScreen(
 
                         Surface(
                             onClick = onSharePng,
+                            enabled = sheet.notes.isNotEmpty(),
                             shape = RoundedCornerShape(14.dp),
-                            color = LavenderContainer,
-                            border = BorderStroke(1.dp, LavenderMusic),
+                            color = if (sheet.notes.isNotEmpty()) LavenderContainer else WarmCard.copy(alpha = 0.5f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (sheet.notes.isNotEmpty()) LavenderMusic else WarmCardBorder
+                            ),
                             modifier = Modifier
                                 .size(48.dp)
                                 .testTag("share_png_icon_button")
@@ -268,7 +365,7 @@ fun SheetResultScreen(
                                 Icon(
                                     imageVector = Icons.Filled.Share,
                                     contentDescription = stringResource(R.string.action_share_image),
-                                    tint = OnLavenderContainer
+                                    tint = if (sheet.notes.isNotEmpty()) OnLavenderContainer else MutedInk.copy(alpha = 0.4f)
                                 )
                             }
                         }
@@ -287,9 +384,8 @@ fun SheetResultScreen(
                         ) {
                             Text(
                                 text = stringResource(
-                                    R.string.sheet_meta_format,
+                                    R.string.sheet_meta_compact_format,
                                     noteCount,
-                                    sheet.bpm,
                                     sheet.beatsPerMeasure
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
@@ -298,11 +394,21 @@ fun SheetResultScreen(
                             )
                         }
 
-                        EditModeToggleButton(
-                            isEditMode = false,
-                            enabled = sheet.notes.isNotEmpty(),
-                            onClick = onToggleEditMode
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            ClearSheetButton(
+                                enabled = sheet.notes.isNotEmpty(),
+                                onClick = { showClearConfirmDialog = true }
+                            )
+
+                            EditModeToggleButton(
+                                isEditMode = false,
+                                enabled = sheet.notes.isNotEmpty(),
+                                onClick = onToggleEditMode
+                            )
+                        }
                     }
                 }
             }
@@ -381,17 +487,77 @@ fun SheetResultScreen(
                                 selectedNoteIndex = sheet.selectedNoteIndex,
                                 onNoteTapped = onNoteTapped
                             )
-                            Text(
-                                text = if (sheet.isEditMode) {
-                                    stringResource(R.string.edit_sheet_hint_active)
-                                } else {
-                                    stringResource(R.string.edit_sheet_hint_view)
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (sheet.isEditMode) CoralPrimary else MutedInk,
-                                fontWeight = if (sheet.isEditMode) FontWeight.SemiBold else FontWeight.Normal,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                            )
+                            if (sheet.notes.isEmpty()) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.empty_sheet_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MutedInk
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Button(
+                                            onClick = onInsertNoteAfter,
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = CoralPrimary,
+                                                contentColor = Color.White
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp)
+                                                .testTag("empty_sheet_add_note_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Add,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = stringResource(R.string.action_add_first_note),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                maxLines = 1
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = onBack,
+                                            shape = RoundedCornerShape(14.dp),
+                                            border = BorderStroke(1.2.dp, WarmCardBorder),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(48.dp)
+                                                .testTag("empty_sheet_back_studio_button")
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.action_back_to_studio),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = WarmInk,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = if (sheet.isEditMode) {
+                                        stringResource(R.string.edit_sheet_hint_active)
+                                    } else {
+                                        stringResource(R.string.edit_sheet_hint_view)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (sheet.isEditMode) CoralPrimary else MutedInk,
+                                    fontWeight = if (sheet.isEditMode) FontWeight.SemiBold else FontWeight.Normal,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
 
@@ -406,33 +572,55 @@ fun SheetResultScreen(
                             keyboardHeight = 92.dp
                         )
 
-                        Button(
-                            onClick = onTogglePlayback,
-                            shape = RoundedCornerShape(20.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (sheet.isPlaying) CoralPrimary else SageMintSecondary,
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .testTag("play_melody_button")
+                        // Playback Tempo (+/- BPM) & Play/Stop Card
+                        Surface(
+                            shape = RoundedCornerShape(22.dp),
+                            color = WarmSurface,
+                            border = BorderStroke(1.2.dp, WarmCardBorder),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(
-                                imageVector = if (sheet.isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(26.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = if (sheet.isPlaying) {
-                                    stringResource(R.string.action_stop_playback)
-                                } else {
-                                    stringResource(R.string.action_play_melody)
-                                },
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                PlaybackTempoStepper(
+                                    bpm = sheet.bpm,
+                                    onDecrease = { onAdjustBpm(-SheetNoteEditor.TEMPO_STEP_BPM) },
+                                    onIncrease = { onAdjustBpm(SheetNoteEditor.TEMPO_STEP_BPM) },
+                                    compact = false,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Button(
+                                    onClick = onTogglePlayback,
+                                    enabled = sheet.notes.isNotEmpty(),
+                                    shape = RoundedCornerShape(18.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (sheet.isPlaying) CoralPrimary else SageMintSecondary,
+                                        contentColor = Color.White
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(54.dp)
+                                        .testTag("play_melody_button")
+                                ) {
+                                    Icon(
+                                        imageVector = if (sheet.isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(26.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = if (sheet.isPlaying) {
+                                            stringResource(R.string.action_stop_playback)
+                                        } else {
+                                            stringResource(R.string.action_play_melody)
+                                        },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
 
                         Row(
@@ -441,6 +629,7 @@ fun SheetResultScreen(
                         ) {
                             Button(
                                 onClick = onSaveSong,
+                                enabled = sheet.notes.isNotEmpty(),
                                 shape = RoundedCornerShape(18.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (sheet.isSaved) SageMintContainer else CoralPrimary,
@@ -470,8 +659,12 @@ fun SheetResultScreen(
 
                             OutlinedButton(
                                 onClick = onSharePng,
+                                enabled = sheet.notes.isNotEmpty(),
                                 shape = RoundedCornerShape(18.dp),
-                                border = BorderStroke(1.5.dp, LavenderMusic),
+                                border = BorderStroke(
+                                    1.5.dp,
+                                    if (sheet.notes.isNotEmpty()) LavenderMusic else WarmCardBorder
+                                ),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
                                 modifier = Modifier
                                     .weight(1f)
@@ -481,13 +674,13 @@ fun SheetResultScreen(
                                 Icon(
                                     imageVector = Icons.Filled.Share,
                                     contentDescription = null,
-                                    tint = LavenderMusic,
+                                    tint = if (sheet.notes.isNotEmpty()) LavenderMusic else MutedInk.copy(alpha = 0.4f),
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
                                     text = stringResource(R.string.action_share_image),
-                                    color = WarmInk,
+                                    color = if (sheet.notes.isNotEmpty()) WarmInk else MutedInk.copy(alpha = 0.5f),
                                     style = MaterialTheme.typography.labelLarge
                                 )
                             }
@@ -688,6 +881,184 @@ fun SheetResultScreen(
                     }
                 }
             }
+        }
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            containerColor = CreamPaper,
+            title = {
+                Text(
+                    text = stringResource(R.string.clear_sheet_dialog_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = WarmInk
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.clear_sheet_dialog_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MutedInk
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearConfirmDialog = false
+                        onClearAllNotes()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SoftError,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("confirm_clear_sheet_button")
+                ) {
+                    Text(stringResource(R.string.action_clear_sheet))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text(stringResource(R.string.action_cancel), color = WarmInk)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun PlaybackTempoStepper(
+    bpm: Int,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    compact: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val canDecrease = bpm > MetronomeEngine.MIN_BPM
+    val canIncrease = bpm < MetronomeEngine.MAX_BPM
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (compact) Arrangement.spacedBy(2.dp) else Arrangement.SpaceBetween
+    ) {
+        if (!compact) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(start = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Speed,
+                    contentDescription = null,
+                    tint = LavenderMusic,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = stringResource(R.string.playback_tempo_label),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = WarmInk
+                )
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = if (compact) CreamPaper else Color(0xFFFFFDF8),
+            border = BorderStroke(1.dp, WarmCardBorder)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                IconButton(
+                    onClick = onDecrease,
+                    enabled = canDecrease,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("sheet_tempo_minus_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Remove,
+                        contentDescription = stringResource(R.string.playback_tempo_down_desc),
+                        tint = if (canDecrease) WarmInk else MutedInk.copy(alpha = 0.35f)
+                    )
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .widthIn(min = if (compact) 48.dp else 64.dp)
+                        .testTag("sheet_tempo_value")
+                ) {
+                    Text(
+                        text = "$bpm",
+                        style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = WarmInk
+                    )
+                    Text(
+                        text = "BPM",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MutedInk
+                    )
+                }
+
+                IconButton(
+                    onClick = onIncrease,
+                    enabled = canIncrease,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("sheet_tempo_plus_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = stringResource(R.string.playback_tempo_up_desc),
+                        tint = if (canIncrease) WarmInk else MutedInk.copy(alpha = 0.35f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClearSheetButton(
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(14.dp),
+        color = if (enabled) CoralContainer.copy(alpha = 0.65f) else WarmCard.copy(alpha = 0.45f),
+        border = BorderStroke(
+            width = 1.2.dp,
+            color = if (enabled) SoftError.copy(alpha = 0.65f) else WarmCardBorder
+        ),
+        modifier = Modifier
+            .height(48.dp)
+            .testTag("clear_sheet_button")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.DeleteSweep,
+                contentDescription = stringResource(R.string.action_clear_sheet_desc),
+                tint = if (enabled) SoftError else MutedInk.copy(alpha = 0.4f),
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = stringResource(R.string.action_clear_sheet),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = if (enabled) OnCoralContainer else MutedInk.copy(alpha = 0.5f),
+                maxLines = 1
+            )
         }
     }
 }

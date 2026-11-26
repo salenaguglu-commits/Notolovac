@@ -35,12 +35,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
@@ -98,6 +98,7 @@ import com.example.ui.theme.OnLavenderContainer
 import com.example.ui.theme.OnSageMintContainer
 import com.example.ui.theme.SageMintContainer
 import com.example.ui.theme.SageMintSecondary
+import com.example.ui.theme.SoftError
 import com.example.ui.theme.WarmCard
 import com.example.ui.theme.WarmCardBorder
 import com.example.ui.theme.WarmInk
@@ -326,7 +327,47 @@ fun StudioScreen(
                         }
                     }
 
-                    if (!isAnyRecording && uiState.liveCapturedNotes.isEmpty()) {
+                    val hasPortraitStaffNotes = uiState.liveCapturedNotes.isNotEmpty() ||
+                        uiState.keyboardPlayedHistory.isNotEmpty()
+                    if (!isAnyRecording && hasPortraitStaffNotes) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Surface(
+                                onClick = onClearKeyboardHistory,
+                                shape = RoundedCornerShape(12.dp),
+                                color = CoralContainer.copy(alpha = 0.65f),
+                                border = BorderStroke(1.dp, SoftError.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .height(48.dp)
+                                    .padding(vertical = 6.dp)
+                                    .testTag("studio_clear_staff_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DeleteSweep,
+                                        contentDescription = stringResource(R.string.action_clear_sheet_desc),
+                                        tint = SoftError,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.action_clear_sheet),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = OnCoralContainer
+                                    )
+                                }
+                            }
+                        }
+                    } else if (!isAnyRecording) {
                         Text(
                             text = stringResource(R.string.studio_empty_staff_hint),
                             style = MaterialTheme.typography.bodySmall,
@@ -484,19 +525,35 @@ private fun LandscapePianoStage(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (!isAnyRecording && uiState.keyboardPlayedHistory.isNotEmpty()) {
-                        IconButton(
+                    if (!isAnyRecording && displayedNotes.isNotEmpty()) {
+                        Surface(
                             onClick = onClearKeyboardHistory,
+                            shape = RoundedCornerShape(10.dp),
+                            color = CoralContainer.copy(alpha = 0.88f),
+                            border = BorderStroke(1.dp, SoftError.copy(alpha = 0.55f)),
                             modifier = Modifier
-                                .size(48.dp)
+                                .height(48.dp)
+                                .padding(vertical = 8.dp)
                                 .testTag("landscape_clear_staff_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = stringResource(R.string.landscape_clear_staff_desc),
-                                tint = MutedInk,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.DeleteSweep,
+                                    contentDescription = stringResource(R.string.action_clear_sheet_desc),
+                                    tint = SoftError,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.action_clear_sheet),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = OnCoralContainer
+                                )
+                            }
                         }
                     }
 

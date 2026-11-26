@@ -201,4 +201,28 @@
     <string name="about_community_donation_body">Za više informacija posetite bloom-it.rs/freebies, a ko želi, može da donira neki dinar za mace i kuce Beograda koje nemaju svoj dom.</string>
     <string name="about_website_url">https://bloom-it.rs/freebies/</string>
     <string name="about_website_cta">Poseti bloom-it.rs/freebies</string>
+
+    <!-- Parental Gate -->
+    <string name="parental_gate_title">Roditeljska provera</string>
+    <string name="parental_gate_body">Da biste otvorili spoljni link, rešite kratak zadatak za odrasle:</string>
+    <string name="parental_gate_question_format">Koliko je %1$d × %2$d?</string>
+    <string name="parental_gate_answer_label">Unesite odgovor</string>
+    <string name="parental_gate_wrong_answer">Netačan odgovor — pokušajte novi zadatak.</string>
+    <string name="parental_gate_confirm_cta">Otvori link</string>
+
+    <!-- Playback Tempo, Play From Note & Clear Sheet -->
+    <string name="sheet_meta_compact_format">%1$d nota • %2$d/4</string>
+    <string name="action_clear_sheet">Obriši</string>
+    <string name="action_clear_sheet_desc">Obriši sve note sa notnog sistema</string>
+    <string name="clear_sheet_dialog_title">Očistiti notni sistem?</string>
+    <string name="clear_sheet_dialog_body">Sve note koje su trenutno na notnom sistemu biće obrisane kako bi mogao da kreneš ispočetka.</string>
+    <string name="msg_sheet_cleared">Notni sistem je očišćen.</string>
+    <string name="empty_sheet_hint">Notni sistem je prazan — dodaj novu notu ili se vrati u Studio da snimiš novu melodiju!</string>
+    <string name="action_add_first_note">Dodaj notu</string>
+    <string name="action_back_to_studio">Nazad u Studio</string>
+    <string name="playback_tempo_label">Tempo</string>
+    <string name="playback_tempo_down_desc">Uspori tempo reprodukcije</string>
+    <string name="playback_tempo_up_desc">Ubrzaj tempo reprodukcije</string>
+    <string name="action_play_from_note">Od #%1$d</string>
+    <string name="action_play_from_note_desc">Pusti kompoziciju od note #%1$d</string>
 </resources>

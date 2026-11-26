@@ -148,4 +148,36 @@ object SheetNoteEditor {
         }
         return updated to nextSelected
     }
+
+    const val TEMPO_STEP_BPM = 5
+
+    /**
+     * Adjusts playback/composition tempo by [deltaBpm], safely clamped within the metronome bounds.
+     */
+    fun adjustTempo(currentBpm: Int, deltaBpm: Int): Int {
+        return (currentBpm + deltaBpm).coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
+    }
+
+    /**
+     * Computes playback delay in milliseconds for a single note given its beat length and live BPM.
+     */
+    fun computePlaybackStepMs(beats: Float, bpm: Int): Long {
+        val clampedBpm = bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
+        val msPerBeat = 60_000.0 / clampedBpm
+        return (beats * msPerBeat).toLong().coerceIn(55L, 2600L)
+    }
+
+    /**
+     * Resolves a safe 0-based playback start index (used when playing from the selected note in Edit mode).
+     * Returns null when the sheet has no notes.
+     */
+    fun resolvePlaybackStartIndex(notesSize: Int, requestedStartIndex: Int?): Int? {
+        if (notesSize <= 0) return null
+        return (requestedStartIndex ?: 0).coerceIn(0, notesSize - 1)
+    }
+
+    /**
+     * Clears every note from the active staff and resets selection.
+     */
+    fun clearAllNotes(): Pair<List<DetectedNote>, Int?> = emptyList<DetectedNote>() to null
 }

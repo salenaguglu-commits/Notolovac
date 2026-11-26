@@ -306,6 +306,17 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         _uiState.update { it.copy(keyboardPlayedHistory = emptyList()) }
     }
 
+    fun clearStudioStaff() {
+        if (_uiState.value.isRecording || _uiState.value.isKeyboardRecording) return
+        _uiState.update {
+            it.copy(
+                keyboardPlayedHistory = emptyList(),
+                liveCapturedNotes = emptyList(),
+                liveMidiNote = null
+            )
+        }
+    }
+
     // ---- KEYBOARD RECORDING ("SNIMI SVIRKU" IN LANDSCAPE STAGE) ----
 
     fun toggleKeyboardRecording() {
@@ -1055,14 +1066,18 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectAndPreviewNote(index: Int) {
         val sheet = _uiState.value.activeSheet ?: return
         val note = sheet.notes.getOrNull(index) ?: return
+        if (sheet.isPlaying) {
+            stopPlayback()
+        }
         _uiState.update { state ->
+            val currentSheet = state.activeSheet ?: return@update state
             val adjustedOctave = adjustOctaveForMidi(
                 state.keyboardStartOctave,
                 note.takeIf { !it.isRest }?.midiNote
             )
             state.copy(
                 keyboardStartOctave = adjustedOctave,
-                activeSheet = sheet.copy(selectedNoteIndex = index)
+                activeSheet = currentSheet.copy(selectedNoteIndex = index)
             )
         }
         if (!note.isRest) {
@@ -1222,36 +1237,90 @@ class NotolovacViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun clearActiveSheetNotes() {
+        val sheet = _uiState.value.activeSheet ?: return
+        if (sheet.notes.isEmpty()) return
+        stopPlayback()
+        val (clearedNotes, clearedSel) = SheetNoteEditor.clearAllNotes()
+        _uiState.update { state ->
+            val currentSheet = state.activeSheet ?: return@update state
+            state.copy(
+                activeSheet = currentSheet.copy(
+                    notes = clearedNotes,
+                    selectedNoteIndex = clearedSel,
+                    isEditMode = false,
+                    isPlaying = false,
+                    playingNoteIndex = null,
+                    isSaved = false
+                ),
+                snackbarMessage = str(R.string.msg_sheet_cleared)
+            )
+        }
+    }
+
+    fun adjustActiveSheetBpm(deltaBpm: Int) {
+        _uiState.update { state ->
+            val sheet = state.activeSheet ?: return@update state
+            val nextBpm = SheetNoteEditor.adjustTempo(sheet.bpm, deltaBpm)
+            if (nextBpm == sheet.bpm) {
+                state
+            } else {
+                state.copy(activeSheet = sheet.copy(bpm = nextBpm, isSaved = false))
+            }
+        }
+    }
+
     fun togglePlayback() {
         val sheet = _uiState.value.activeSheet ?: return
         if (sheet.isPlaying) {
             stopPlayback()
             return
         }
-        if (sheet.notes.isEmpty()) return
+        startPlaybackFrom(startIndex = 0, keepEditMode = false)
+    }
+
+    fun togglePlaybackFromSelected() {
+        val sheet = _uiState.value.activeSheet ?: return
+        if (sheet.isPlaying) {
+            stopPlayback()
+            return
+        }
+        val startIndex = SheetNoteEditor.resolvePlaybackStartIndex(
+            notesSize = sheet.notes.size,
+            requestedStartIndex = sheet.selectedNoteIndex
+        ) ?: return
+        startPlaybackFrom(startIndex = startIndex, keepEditMode = sheet.isEditMode)
+    }
+
+    private fun startPlaybackFrom(startIndex: Int, keepEditMode: Boolean) {
+        val sheet = _uiState.value.activeSheet ?: return
+        val resolvedStart = SheetNoteEditor.resolvePlaybackStartIndex(sheet.notes.size, startIndex) ?: return
 
         playbackJob?.cancel()
-        _uiState.update {
-            it.copy(
-                activeSheet = sheet.copy(
+        val notesSnapshot = sheet.notes
+        _uiState.update { state ->
+            val currentSheet = state.activeSheet ?: return@update state
+            state.copy(
+                activeSheet = currentSheet.copy(
                     isPlaying = true,
-                    isEditMode = false,
+                    isEditMode = keepEditMode,
                     playingNoteIndex = null,
-                    selectedNoteIndex = null
+                    selectedNoteIndex = if (keepEditMode) currentSheet.selectedNoteIndex else null
                 )
             )
         }
 
         playbackJob = viewModelScope.launch {
-            val msPerBeat = 60_000.0 / sheet.bpm.coerceIn(MetronomeEngine.MIN_BPM, MetronomeEngine.MAX_BPM)
-            sheet.notes.forEachIndexed { idx, note ->
+            for (idx in resolvedStart until notesSnapshot.size) {
                 if (!isActive) return@launch
+                val note = notesSnapshot[idx]
+                val liveBpm = _uiState.value.activeSheet?.bpm ?: sheet.bpm
                 _uiState.update { state ->
                     state.activeSheet?.let { cur ->
                         state.copy(activeSheet = cur.copy(playingNoteIndex = idx))
                     } ?: state
                 }
-                val stepDurationMs = (note.beats * msPerBeat).toLong().coerceIn(55L, 2600L)
+                val stepDurationMs = SheetNoteEditor.computePlaybackStepMs(note.beats, liveBpm)
                 if (!note.isRest) {
                     synthesizer.playNote(
                         midiNote = note.midiNote,

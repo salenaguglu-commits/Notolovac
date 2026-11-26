@@ -201,4 +201,20 @@
     <string name="about_community_donation_body">За више информација посетите bloom-it.rs/freebies, а ко жели, може да донира неки динар за маце и куце Београда које немају свој дом.</string>
     <string name="about_website_url">https://bloom-it.rs/freebies/</string>
     <string name="about_website_cta">Посети bloom-it.rs/freebies</string>
+
+    <!-- Playback Tempo, Play From Note & Clear Sheet -->
+    <string name="sheet_meta_compact_format">%1$d нота • %2$d/4</string>
+    <string name="action_clear_sheet">Обриши</string>
+    <string name="action_clear_sheet_desc">Обриши све ноте са нотног система</string>
+    <string name="clear_sheet_dialog_title">Очистити нотни систем?</string>
+    <string name="clear_sheet_dialog_body">Све ноте које су тренутно на нотном систему биће обрисане како би могао да кренеш испочетка.</string>
+    <string name="msg_sheet_cleared">Нотни систем је очишћен.</string>
+    <string name="empty_sheet_hint">Нотни систем је празан — додај нову ноту или се врати у Студио да снимиш нову мелодију!</string>
+    <string name="action_add_first_note">Додај ноту</string>
+    <string name="action_back_to_studio">Назад у Студио</string>
+    <string name="playback_tempo_label">Темпо</string>
+    <string name="playback_tempo_down_desc">Успори темпо репродукције</string>
+    <string name="playback_tempo_up_desc">Убрзај темпо репродукције</string>
+    <string name="action_play_from_note">Од #%1$d</string>
+    <string name="action_play_from_note_desc">Пусти композицију од ноте #%1$d</string>
 </resources>

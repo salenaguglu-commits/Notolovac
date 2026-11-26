@@ -209,4 +209,20 @@
     <string name="parental_gate_answer_label">Enter answer</string>
     <string name="parental_gate_wrong_answer">Not quite right — try this new question.</string>
     <string name="parental_gate_confirm_cta">Open Link</string>
+
+    <!-- Playback Tempo, Play From Note & Clear Sheet -->
+    <string name="sheet_meta_compact_format">%1$d notes • %2$d/4</string>
+    <string name="action_clear_sheet">Clear</string>
+    <string name="action_clear_sheet_desc">Clear all notes from staff</string>
+    <string name="clear_sheet_dialog_title">Clear all notes?</string>
+    <string name="clear_sheet_dialog_body">All notes currently on this music sheet will be removed so you can start fresh.</string>
+    <string name="msg_sheet_cleared">Music sheet cleared.</string>
+    <string name="empty_sheet_hint">The staff is empty — add a note or return to the Studio to record a new melody!</string>
+    <string name="action_add_first_note">Add Note</string>
+    <string name="action_back_to_studio">Back to Studio</string>
+    <string name="playback_tempo_label">Tempo</string>
+    <string name="playback_tempo_down_desc">Slow down playback tempo</string>
+    <string name="playback_tempo_up_desc">Speed up playback tempo</string>
+    <string name="action_play_from_note">From #%1$d</string>
+    <string name="action_play_from_note_desc">Play composition starting from note #%1$d</string>
 </resources>

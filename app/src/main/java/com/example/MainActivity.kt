@@ -271,7 +271,10 @@ fun NotolovacApp(
                 onSelectDuration = { viewModel.setSelectedNoteDuration(it) },
                 onInsertNoteAfter = { viewModel.insertNoteAfterSelected() },
                 onRemoveNote = { viewModel.removeNoteAt(it) },
+                onClearAllNotes = { viewModel.clearActiveSheetNotes() },
+                onAdjustBpm = { viewModel.adjustActiveSheetBpm(it) },
                 onTogglePlayback = { viewModel.togglePlayback() },
+                onTogglePlaybackFromSelected = { viewModel.togglePlaybackFromSelected() },
                 onSaveSong = { viewModel.saveActiveSheet() },
                 onSharePng = { shareActiveSheetPng() },
                 onOctaveChange = { viewModel.setKeyboardOctave(it) },
@@ -317,7 +320,7 @@ fun NotolovacApp(
                         onOctaveChange = { viewModel.setKeyboardOctave(it) },
                         onPianoKeyClick = { viewModel.onPianoKeyPressed(it) },
                         onPianoKeyRelease = { viewModel.onPianoKeyReleased(it) },
-                        onClearKeyboardHistory = { viewModel.clearKeyboardHistory() },
+                        onClearKeyboardHistory = { viewModel.clearStudioStaff() },
                         isLandscape = isLandscapePianoStage
                     )
 

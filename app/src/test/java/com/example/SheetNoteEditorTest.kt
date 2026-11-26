@@ -118,4 +118,34 @@ class SheetNoteEditorTest {
         assertTrue(empty.isEmpty())
         assertNull(selEmpty)
     }
+
+    @Test
+    fun playbackTempoSpeedUpDownClampsSafelyAndAdjustsStepDuration() {
+        assertEquals(95, SheetNoteEditor.adjustTempo(90, +SheetNoteEditor.TEMPO_STEP_BPM))
+        assertEquals(85, SheetNoteEditor.adjustTempo(90, -SheetNoteEditor.TEMPO_STEP_BPM))
+        assertEquals(40, SheetNoteEditor.adjustTempo(42, -5))
+        assertEquals(260, SheetNoteEditor.adjustTempo(258, +5))
+
+        // Speeding up from 60 BPM (1000ms/beat) to 120 BPM (500ms/beat) halves quarter-note step duration
+        assertEquals(1000L, SheetNoteEditor.computePlaybackStepMs(beats = 1.0f, bpm = 60))
+        assertEquals(500L, SheetNoteEditor.computePlaybackStepMs(beats = 1.0f, bpm = 120))
+        // 260 BPM eighth note stays comfortably above minimum floor
+        assertEquals(115L, SheetNoteEditor.computePlaybackStepMs(beats = 0.5f, bpm = 260))
+    }
+
+    @Test
+    fun resolvePlaybackStartIndexStartsFromSelectedNoteInEditMode() {
+        assertNull(SheetNoteEditor.resolvePlaybackStartIndex(notesSize = 0, requestedStartIndex = 0))
+        assertEquals(0, SheetNoteEditor.resolvePlaybackStartIndex(notesSize = 5, requestedStartIndex = null))
+        assertEquals(3, SheetNoteEditor.resolvePlaybackStartIndex(notesSize = 5, requestedStartIndex = 3))
+        assertEquals(4, SheetNoteEditor.resolvePlaybackStartIndex(notesSize = 5, requestedStartIndex = 99))
+        assertEquals(0, SheetNoteEditor.resolvePlaybackStartIndex(notesSize = 5, requestedStartIndex = -2))
+    }
+
+    @Test
+    fun clearAllNotesWipesStaffAndSelection() {
+        val (cleared, sel) = SheetNoteEditor.clearAllNotes()
+        assertTrue(cleared.isEmpty())
+        assertNull(sel)
+    }
 }
